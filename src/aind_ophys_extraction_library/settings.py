@@ -235,6 +235,15 @@ class ExtractionSettings(BaseSettings, cli_parse_args=True):
         default=False, description="Enable verbose logging and debug information."
     )
 
+    verify: bool = Field(
+        default=False,
+        description=(
+            "Round-trip the emitted processing.json / quality_control.json "
+            "through the core v2 schema objects after writing, so bad output "
+            "fails in-capsule rather than downstream."
+        ),
+    )
+
     # Suite2p parameter overrides
     suite2p_params: str = Field(
         default="",

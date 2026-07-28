@@ -1,11 +1,11 @@
 """quality_control.json generation for ophys extraction.
 
 Capsule-specific metric content over the shared ``aind_pophys_metadata``
-QC builders. The PENDING status, the ``QualityControl`` wrapper with the
-project-standard ``default_grouping``, and the writer all live in the shared
-library. This module owns the extraction-specific ``CheckboxMetric`` for
-detected ROIs. ``job.run`` accumulates metrics and emits ONE full
-``quality_control.json`` (never per-metric files).
+QC builders. The ``QualityControl`` wrapper with the project-standard
+``default_grouping`` and the writer both live in the shared library. This
+module owns the extraction-specific ``CheckboxMetric`` for detected ROIs.
+``job.run`` accumulates metrics and emits ONE full ``quality_control.json``
+(never per-metric files).
 """
 
 from datetime import datetime as dt
@@ -25,11 +25,6 @@ from aind_pophys_metadata import quality_control as shared_qc
 from aind_qcportal_schema.metric_value import CheckboxMetric
 
 _SEATTLE_TZ = pytz.timezone("America/Los_Angeles")
-
-
-def pending_qc_status() -> QCStatus:
-    """Return a PENDING QCStatus timestamped to US/Pacific."""
-    return shared_qc.pending_qc_status()
 
 
 def build_detected_rois_metric(

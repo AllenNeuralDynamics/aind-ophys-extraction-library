@@ -53,10 +53,6 @@ class TestDetectedROIsMetric(unittest.TestCase):
         self.assertEqual(len(m.value.options), 1)
         self.assertEqual(m.value.options[0], "Missing ROIs")
 
-    def test_pending_status_helper(self):
-        """pending_qc_status returns PENDING."""
-        self.assertEqual(qc.pending_qc_status().status, Status.PENDING)
-
 
 class TestQualityControlCollector(unittest.TestCase):
     """build_quality_control + write round-trip."""
