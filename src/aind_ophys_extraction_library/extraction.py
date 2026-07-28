@@ -494,7 +494,7 @@ def build_CNMFParams(
     if Ain is None:
         params_dict.update(
             {
-                "K": args.K,
+                "K": args.k_components,
                 "method_init": args.init,
                 "rf": args.rf,
                 "stride": args.stride,

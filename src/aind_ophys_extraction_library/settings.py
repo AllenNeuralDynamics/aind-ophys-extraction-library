@@ -126,11 +126,14 @@ class ExtractionSettings(BaseSettings, cli_parse_args=True):
         ),
     )
     # CNMF parameters
-    K: int = Field(
+    k_components: int = Field(
         default=5,
         description=(
             "Maximum number of components to be found per patch when using greedy_roi "
-            "or corr_pnr initialization in CaImAn."
+            "or corr_pnr initialization in CaImAn (CaImAn's 'K'). Named with more than "
+            "one character so pydantic-settings renders a long CLI flag: a "
+            "single-character field becomes a short option (-k), which a Code Ocean "
+            "app panel cannot emit."
         ),
     )
     nb: int = Field(
