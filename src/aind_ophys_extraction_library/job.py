@@ -35,6 +35,7 @@ from .extraction import (
 )
 from .settings import ExtractionSettings
 from .utils import metadata_utils as mu
+from .utils.paths import relative_to_root
 
 logger = logging.getLogger("Ophys extraction")
 
@@ -62,18 +63,6 @@ def _verify_outputs(output_dir: Path) -> None:
     QualityControl.model_validate_json(
         (Path(output_dir) / "quality_control.json").read_text()
     )
-
-
-def _relative_output_path(results_root: Path, output_dir: Path) -> str:
-    """Return ``output_dir`` relative to the results root.
-
-    Falls back to the absolute path when ``output_dir`` is not under the
-    results root, so provenance is never dropped entirely.
-    """
-    try:
-        return str(Path(output_dir).relative_to(results_root))
-    except ValueError:
-        return str(output_dir)
 
 
 def _locate_input_movie(input_dir: Path) -> Path:
@@ -213,7 +202,7 @@ def _write_quality_control(
     results_root: Path, output_dir: Path, unique_id: str, num_rois: int
 ) -> None:
     """Emit one full quality_control.json for this plane."""
-    reference = _relative_output_path(
+    reference = relative_to_root(
         results_root, output_dir / f"{unique_id}_detected_ROIs_withIDs.png"
     )
     metric = qc.build_detected_rois_metric(
@@ -244,7 +233,7 @@ def _write_processing_metadata(
             start_time=start_time,
             end_time=dt.now(),
             input_data=ctx.get("input_data"),
-            output_path=_relative_output_path(results_root, output_dir),
+            output_path=relative_to_root(results_root, output_dir),
             error=error,
         )
         mu.write_processing_json(mu.build_processing([data_process]), output_dir)
@@ -274,7 +263,7 @@ def _run_extraction(
 
     input_fn = _locate_input_movie(input_dir)
     unique_id = input_fn.parent.parent.name
-    ctx["input_data"] = [_relative_output_path(input_dir, input_fn)]
+    ctx["input_data"] = [relative_to_root(input_dir, input_fn)]
 
     session_raw = _load_session_raw(input_dir)
     if metadata.instrument_id and _BERGAMO_INSTRUMENT in metadata.instrument_id:
