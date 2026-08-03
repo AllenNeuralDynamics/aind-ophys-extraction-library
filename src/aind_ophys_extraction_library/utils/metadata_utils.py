@@ -95,6 +95,7 @@ def build_data_process(
     input_data: Optional[List[str]] = None,
     output_path: Optional[str] = None,
     output_parameters: Optional[dict] = None,
+    plane_id: Optional[str] = None,
     error: Optional[BaseException] = None,
 ) -> DataProcess:
     """Construct a v2 DataProcess for extraction.
@@ -114,6 +115,9 @@ def build_data_process(
         root.
     output_parameters : dict, optional
         Actual parameters used and output metrics.
+    plane_id : str, optional
+        Plane/FOV id this run processed. Qualifies the process name so it
+        stays unique once every plane's document is merged.
     error : Exception, optional
         The exception that terminated the run, or ``None`` on success. The
         message is recorded in ``notes``.
@@ -137,6 +141,7 @@ def build_data_process(
     )
     return shared_processing.build_data_process(
         process_type=ProcessName.VIDEO_ROI_TIMESERIES_EXTRACTION,
+        plane_id=plane_id,
         code=code,
         start_time=start_time.astimezone(_SEATTLE_TZ),
         end_time=end_time.astimezone(_SEATTLE_TZ),

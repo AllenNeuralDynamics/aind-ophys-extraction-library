@@ -234,6 +234,7 @@ def _write_processing_metadata(
             end_time=dt.now(),
             input_data=ctx.get("input_data"),
             output_path=relative_to_root(results_root, output_dir),
+            plane_id=ctx.get("unique_id"),
             error=error,
         )
         mu.write_processing_json(mu.build_processing([data_process]), output_dir)
@@ -263,6 +264,7 @@ def _run_extraction(
 
     input_fn = _locate_input_movie(input_dir)
     unique_id = input_fn.parent.parent.name
+    ctx["unique_id"] = unique_id
     ctx["input_data"] = [relative_to_root(input_dir, input_fn)]
 
     session_raw = _load_session_raw(input_dir)
