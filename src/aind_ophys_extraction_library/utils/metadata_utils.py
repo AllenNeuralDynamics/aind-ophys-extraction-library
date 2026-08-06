@@ -1,60 +1,224 @@
 """aind-data-schema v1/v2 metadata reads for ophys extraction.
 
 A thin, capsule-specific layer over the shared ``aind_pophys_metadata``
-library. The v1/v2 dict paths, schema-version dispatch, and the
+library. The v1/v2 dict paths, schema-version dispatch, path helpers and the
 ``Processing`` builders live in the shared library; this module only assembles
-the extraction ``ExtractionMetadata`` view and its capsule-specific
-``DataProcess``.
+the extraction ``ExtractionMetadata`` view, the extraction ``Code`` block, and
+the output summary written to ``DataProcess.output_parameters``.
 """
 
-import os
 from dataclasses import dataclass
-from datetime import datetime as dt
 from pathlib import Path
-from typing import List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
-import pytz
-from aind_data_schema.core.processing import DataProcess, Processing
+from aind_data_schema.components.identifiers import Code
 from aind_data_schema_models.process_names import ProcessName
 from aind_pophys_metadata import fields, io
 from aind_pophys_metadata import processing as shared_processing
 
-_SEATTLE_TZ = pytz.timezone("America/Los_Angeles")
+#: Distribution name of this backing library. The shared builder derives both
+#: ``Code.url`` and ``Code.version`` from it.
+LIBRARY_NAME = "aind-ophys-extraction-library"
 
-CODE_URL = (
-    "https://github.com/AllenNeuralDynamics/"
-    "aind-ophys-extraction/tree/main/code"
-)
+CODE_NAME = "aind-ophys-extraction"
+
+PROCESS_TYPE = ProcessName.VIDEO_ROI_TIMESERIES_EXTRACTION
+
+#: Substring identifying a Bergamo rig in ``instrument_id``.
+BERGAMO_INSTRUMENT = "Bergamo"
+
+#: Stimulus epochs with this name are photostimulation and are excluded from
+#: the movie Bergamo extraction runs on.
+PHOTOSTIM_STIMULUS_NAME = "2p photostimulation"
+
+#: v1 carried the TIFF stem on ``stimulus_epochs[*].output_parameters``. The
+#: v1 -> v2 upgrade drops that field, but keeps the same value on the
+#: correspondingly-timed data stream's ``notes``, as ``tiff_stem:<stem>``.
+TIFF_STEM_NOTE_PREFIX = "tiff_stem:"
+
+
+def is_bergamo(instrument_id: Optional[str]) -> bool:
+    """Return whether ``instrument_id`` names a Bergamo rig.
+
+    Parameters
+    ----------
+    instrument_id : str or None
+        Instrument/rig identifier from the core acquisition file.
+
+    Returns
+    -------
+    bool
+        ``True`` when the identifier contains the Bergamo marker.
+    """
+    return bool(instrument_id) and BERGAMO_INSTRUMENT in instrument_id
 
 
 @dataclass(frozen=True)
 class ExtractionMetadata:
     """Minimal metadata the extraction capsule consumes.
 
-    ``frame_rate`` drives Suite2p temporal binning; ``instrument_id``
-    is used to detect Bergamo rigs (photostimulation frame filtering);
-    the remaining fields are identifiers used for logging and output naming.
+    ``frame_rate`` drives Suite2p temporal binning and is validated at load
+    time, so a rate-less asset fails with a message naming the file and schema
+    version rather than partway through ``run()``. ``instrument_id`` is used to
+    detect Bergamo rigs; ``valid_epoch_stems`` carries the Bergamo TIFF stems
+    that survive photostimulation filtering, resolved from whichever schema
+    version the input carries. The remaining fields are identifiers used for
+    logging and output naming.
     """
 
-    frame_rate: Optional[float] = None
+    frame_rate: float
     instrument_id: Optional[str] = None
     subject_id: Optional[str] = None
     dataset_name: Optional[str] = None
+    valid_epoch_stems: Tuple[str, ...] = ()
 
 
-def load_extraction_metadata(input_dir: Path) -> ExtractionMetadata:
+def _v1_epoch_stems(core_raw: dict, core_file: Path) -> Tuple[str, ...]:
+    """Return non-photostimulation TIFF stems from a v1 ``session.json``.
+
+    Parameters
+    ----------
+    core_raw : dict
+        Raw ``session.json`` dict.
+    core_file : Path
+        Source file path, named in the error message.
+
+    Returns
+    -------
+    tuple of str
+        TIFF stems in stimulus-epoch order.
+
+    Raises
+    ------
+    ValueError
+        If an included epoch carries no ``output_parameters.tiff_stem``.
+    """
+    stems: List[str] = []
+    for epoch in core_raw.get("stimulus_epochs") or []:
+        if epoch.get("stimulus_name") == PHOTOSTIM_STIMULUS_NAME:
+            continue
+        stem = (epoch.get("output_parameters") or {}).get("tiff_stem")
+        if not stem:
+            raise ValueError(
+                f"Stimulus epoch {epoch.get('stimulus_name')!r} in "
+                f"{Path(core_file).name} has no "
+                "output_parameters.tiff_stem, so its frames cannot be "
+                "located in epoch_locations.json."
+            )
+        stems.append(stem)
+    return tuple(stems)
+
+
+def _v2_stems_by_start_time(core_raw: dict) -> Dict[Any, str]:
+    """Index v2 data-stream TIFF stems by stream start time.
+
+    Parameters
+    ----------
+    core_raw : dict
+        Raw ``acquisition.json`` dict.
+
+    Returns
+    -------
+    dict
+        Mapping of ``stream_start_time`` to TIFF stem.
+    """
+    stems: Dict[Any, str] = {}
+    for stream in core_raw.get("data_streams") or []:
+        notes = stream.get("notes") or ""
+        if notes.startswith(TIFF_STEM_NOTE_PREFIX):
+            stems[stream.get("stream_start_time")] = notes[
+                len(TIFF_STEM_NOTE_PREFIX):
+            ]
+    return stems
+
+
+def _v2_epoch_stems(core_raw: dict, core_file: Path) -> Tuple[str, ...]:
+    """Return non-photostimulation TIFF stems from a v2 ``acquisition.json``.
+
+    The v1 -> v2 upgrade drops ``stimulus_epochs[*].output_parameters``
+    entirely, so the stem is recovered from the data stream covering the same
+    time span, whose ``notes`` the upgrade preserves verbatim.
+
+    Parameters
+    ----------
+    core_raw : dict
+        Raw ``acquisition.json`` dict.
+    core_file : Path
+        Source file path, named in the error message.
+
+    Returns
+    -------
+    tuple of str
+        TIFF stems in stimulus-epoch order.
+
+    Raises
+    ------
+    ValueError
+        If no data stream shares an included epoch's start time.
+    """
+    by_start_time = _v2_stems_by_start_time(core_raw)
+    stems: List[str] = []
+    for epoch in core_raw.get("stimulus_epochs") or []:
+        if epoch.get("stimulus_name") == PHOTOSTIM_STIMULUS_NAME:
+            continue
+        start_time = epoch.get("stimulus_start_time")
+        stem = by_start_time.get(start_time)
+        if not stem:
+            raise ValueError(
+                f"Stimulus epoch {epoch.get('stimulus_name')!r} starting "
+                f"{start_time} in {Path(core_file).name} has no data stream "
+                f"with a {TIFF_STEM_NOTE_PREFIX!r} note at the same start "
+                "time, so its frames cannot be located in "
+                "epoch_locations.json."
+            )
+        stems.append(stem)
+    return tuple(stems)
+
+
+def get_valid_epoch_stems(
+    version: str, core_raw: dict, core_file: Path
+) -> Tuple[str, ...]:
+    """TIFF stems of the epochs Bergamo extraction keeps, either version.
+
+    Parameters
+    ----------
+    version : str
+        Schema version (:data:`aind_pophys_metadata.io.SCHEMA_V1` or
+        ``SCHEMA_V2``).
+    core_raw : dict
+        Raw ``session.json`` (v1) or ``acquisition.json`` (v2) dict.
+    core_file : Path
+        Source file path, named in any error message.
+
+    Returns
+    -------
+    tuple of str
+        TIFF stems in stimulus-epoch order, photostimulation excluded.
+    """
+    if version == io.SCHEMA_V1:
+        return _v1_epoch_stems(core_raw, core_file)
+    return _v2_epoch_stems(core_raw, core_file)
+
+
+def load_extraction_metadata(
+    input_dir: Path, frame_rate_override: Optional[float] = None
+) -> ExtractionMetadata:
     """Read v1/v2 metadata for extraction from ``input_dir``.
 
     Dispatches on which core file is present (``acquisition.json`` -> v2,
     ``session.json`` -> v1). ``frame_rate`` falls back to ``platform.json``
-    when the core file lacks it. ``subject_id`` is read from the core file
-    (canonical) and falls back to ``subject.json``. ``dataset_name`` comes
-    from ``data_description.json``.
+    and then to ``frame_rate_override``, and is fatal here rather than deep in
+    the run. ``subject_id`` is read from the core file (canonical) and falls
+    back to ``subject.json``. ``dataset_name`` comes from
+    ``data_description.json``.
 
     Parameters
     ----------
     input_dir : Path
         Directory searched recursively for the metadata files.
+    frame_rate_override : float, optional
+        Operator-supplied frame rate, used only when the metadata carries
+        none.
 
     Returns
     -------
@@ -66,110 +230,149 @@ def load_extraction_metadata(input_dir: Path) -> ExtractionMetadata:
     FileNotFoundError
         If neither ``acquisition.json`` nor ``session.json`` is found.
     ValueError
-        If both core files are present (ambiguous input).
+        If both core files are present (ambiguous input), or if no source
+        supplies a frame rate.
     """
     input_dir = Path(input_dir)
-    core_path = io.find_acquisition_file(input_dir)
-    version = io.detect_schema_version(core_path)
-    core_raw = io.load_json(core_path)
-
-    platform_path = io.find(input_dir, "platform.json")
-    platform_raw = io.load_json(platform_path) if platform_path else None
-    subject_path = io.find(input_dir, "subject.json")
-    subject_raw = io.load_json(subject_path) if subject_path else None
-    dd_path = io.find(input_dir, "data_description.json")
-    dd_raw = io.load_json(dd_path) if dd_path else None
-
+    common = io.load_common(input_dir)
+    instrument_id = fields.get_instrument_id(common.version, common.core_raw)
     return ExtractionMetadata(
-        frame_rate=fields.get_frame_rate(version, core_raw, platform_raw),
-        instrument_id=fields.get_instrument_id(version, core_raw),
-        subject_id=fields.get_subject_id(core_raw, subject_raw),
-        dataset_name=fields.get_dataset_name(dd_raw),
+        frame_rate=fields.resolve_frame_rate(
+            common.version,
+            common.core_raw,
+            common.platform_raw,
+            core_file=common.core_path,
+            input_dir=input_dir,
+            cli_override=frame_rate_override,
+            required=True,
+        ),
+        instrument_id=instrument_id,
+        subject_id=fields.get_subject_id(
+            common.core_raw, common.subject_raw
+        ),
+        dataset_name=fields.get_dataset_name(common.data_description_raw),
+        valid_epoch_stems=(
+            get_valid_epoch_stems(
+                common.version, common.core_raw, common.core_path
+            )
+            if is_bergamo(instrument_id)
+            else ()
+        ),
     )
 
 
-def build_data_process(
+def process_name(plane_id: str) -> str:
+    """Return the ``DataProcess.name`` this capsule emits for a plane.
+
+    Mirrors the composition
+    :func:`aind_pophys_metadata.processing.build_data_process` performs, so
+    the name can be excluded from the upstream dependency scan before the
+    process itself is built.
+
+    Parameters
+    ----------
+    plane_id : str
+        Plane/FOV id this run processed.
+
+    Returns
+    -------
+    str
+        The qualified process name.
+    """
+    return f"{plane_id}: {PROCESS_TYPE.value}"
+
+
+def build_extraction_code(
     parameters: dict,
-    start_time: dt,
-    end_time: dt,
     input_data: Optional[List[str]] = None,
-    output_path: Optional[str] = None,
-    output_parameters: Optional[dict] = None,
-    plane_id: Optional[str] = None,
-    error: Optional[BaseException] = None,
-) -> DataProcess:
-    """Construct a v2 DataProcess for extraction.
+) -> Code:
+    """Construct the v2 ``Code`` block for extraction.
 
     Parameters
     ----------
     parameters : dict
-        Capsule configuration parameters (from ExtractionSettings).
-    start_time : dt
-        Processing start time.
-    end_time : dt
-        Processing end time.
+        Capsule configuration parameters (from ``ExtractionSettings``). This
+        is the record of what the step was *asked* to do; output statistics
+        belong in ``output_parameters`` instead.
     input_data : list of str, optional
-        Input data path(s)/asset name(s) for provenance.
-    output_path : str, optional
-        Path to this process's output directory, relative to the results
-        root.
-    output_parameters : dict, optional
-        Actual parameters used and output metrics.
-    plane_id : str, optional
-        Plane/FOV id this run processed. Qualifies the process name so it
-        stays unique once every plane's document is merged.
-    error : Exception, optional
-        The exception that terminated the run, or ``None`` on success. The
-        message is recorded in ``notes``.
+        Input data path(s)/asset name(s) for provenance, relative to the
+        input root.
 
     Returns
     -------
-    DataProcess
-        The populated extraction data process.
+    Code
+        The populated code block. Url and version both come from the
+        installed backing library, so the two always describe one artifact.
     """
-    notes = (
-        None
-        if error is None
-        else f"Run failed with {type(error).__name__}: {error}"
-    )
-    code = shared_processing.build_code(
-        url=CODE_URL,
-        name="aind-ophys-extraction",
-        version=os.getenv("VERSION", ""),
+    return shared_processing.build_code(
+        CODE_NAME,
+        library_name=LIBRARY_NAME,
         parameters=parameters,
         input_data=input_data,
     )
-    return shared_processing.build_data_process(
-        process_type=ProcessName.VIDEO_ROI_TIMESERIES_EXTRACTION,
-        plane_id=plane_id,
-        code=code,
-        start_time=start_time.astimezone(_SEATTLE_TZ),
-        end_time=end_time.astimezone(_SEATTLE_TZ),
-        output_path=output_path,
-        output_parameters=output_parameters,
-        notes=notes,
-        resources=shared_processing.resource_usage(),
-    )
 
 
-def build_processing(data_processes: List[DataProcess]) -> Processing:
-    """Wrap data processes into a full v2 Processing object."""
-    return shared_processing.build_processing(data_processes)
-
-
-def write_processing_json(processing: Processing, output_dir: Path) -> Path:
-    """Serialize a Processing object to ``processing.json``.
+def _count_cells(iscell) -> Optional[int]:
+    """Return how many ROIs Suite2p/CaImAn classified as cells.
 
     Parameters
     ----------
-    processing : Processing
-        The processing document to write.
-    output_dir : Path
-        Directory into which ``processing.json`` is written.
+    iscell : sequence
+        Per-ROI classification, either a sequence of scalars or the
+        ``(n_rois, 2)`` array Suite2p and CaImAn both emit.
 
     Returns
     -------
-    Path
-        The path written.
+    int or None
+        The number of ROIs flagged as cells, or ``None`` when the structure
+        is not recognised.
     """
-    return shared_processing.write_processing_json(processing, output_dir)
+    try:
+        return sum(
+            int(bool(entry[0] if hasattr(entry, "__len__") else entry))
+            for entry in iscell
+        )
+    except (TypeError, IndexError, KeyError, ValueError):
+        return None
+
+
+def build_output_parameters(
+    result: dict, num_rois: int, frame_rate: float
+) -> Dict[str, Any]:
+    """Summarize this step's outputs for ``DataProcess.output_parameters``.
+
+    The convention this fills, shared across the pophys fleet: scalar summary
+    statistics describing the outputs this step *produced*, chosen so a run
+    can be triaged from the metadata alone without opening the data. It is
+    explicitly not a place for input parameters, which belong in
+    ``Code.parameters``.
+
+    Parameters
+    ----------
+    result : dict
+        Detection result from the Suite2p or CaImAn path.
+    num_rois : int
+        Number of ROI masks written to the output HDF5.
+    frame_rate : float
+        Frame rate the traces were extracted at, in Hz.
+
+    Returns
+    -------
+    dict
+        Scalar summary statistics. Keys whose value could not be determined
+        are omitted rather than recorded as ``None``.
+    """
+    dims = result.get("dims") or ()
+    summary: Dict[str, Any] = {
+        "n_rois": int(num_rois),
+        "n_traces": len(result.get("traces_corrected") or []),
+        "n_frames": int(result.get("nframes") or 0),
+        "frame_rate_hz": float(frame_rate),
+    }
+    num_cells = _count_cells(result.get("iscell") or [])
+    if num_cells is not None:
+        summary["n_rois_classified_as_cells"] = num_cells
+    if len(dims) == 2:
+        summary["movie_height_px"] = int(dims[0])
+        summary["movie_width_px"] = int(dims[1])
+    return summary

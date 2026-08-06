@@ -14,7 +14,7 @@ import logging
 import os
 from multiprocessing.pool import Pool, ThreadPool
 from pathlib import Path
-from typing import Optional, Tuple, Union
+from typing import Optional, Sequence, Tuple, Union
 
 import caiman
 import cv2
@@ -28,6 +28,7 @@ import suite2p
 from aind_ophys_utils.array_utils import downsample_array
 from aind_ophys_utils.segmentation_utils import roi_probabilities
 from aind_ophys_utils.summary_images import mean_image
+from aind_pophys_metadata.paths import find_one
 from caiman.source_extraction.cnmf import cnmf, params
 from cellpose.models import Cellpose
 from scipy.sparse import coo_matrix, hstack, linalg
@@ -106,15 +107,18 @@ def create_virtual_dataset(
     return h5_file
 
 
-def bergamo_segmentation(motion_corr_fp: Path, session: dict, temp_dir: Path) -> Path:
+def bergamo_segmentation(
+    motion_corr_fp: Path, valid_epoch_stems: Sequence[str], temp_dir: Path
+) -> Path:
     """Create a virtual dataset for Bergamo data, excluding photostimulation frames.
 
     Parameters
     ----------
     motion_corr_fp : Path
         Path to the motion-corrected HDF5 file.
-    session : dict
-        Raw v1 session metadata (used to identify photostim epochs).
+    valid_epoch_stems : sequence of str
+        TIFF stems of the stimulus epochs to keep, in acquisition order
+        (see ``utils.metadata_utils.get_valid_epoch_stems``).
     temp_dir : Path
         Directory for the temporary virtual dataset.
 
@@ -124,14 +128,9 @@ def bergamo_segmentation(motion_corr_fp: Path, session: dict, temp_dir: Path) ->
         Path to the filtered virtual dataset.
     """
     motion_dir = motion_corr_fp.parent
-    epoch_loc_fp = next(motion_dir.glob("epoch_locations.json"))
+    epoch_loc_fp = find_one(motion_dir, "epoch_locations.json", recursive=False)
     with open(epoch_loc_fp, "r") as j:
         epoch_locations = json.load(j)
-    valid_epoch_stems = [
-        i["output_parameters"]["tiff_stem"]
-        for i in session["stimulus_epochs"]
-        if i["stimulus_name"] != "2p photostimulation"
-    ]
     frame_locations = [epoch_locations[i] for i in valid_epoch_stems]
     frames_length = sum([(i[1] - i[0] + 1) for i in frame_locations])
 
@@ -1034,7 +1033,8 @@ def run_suite2p_extraction(
         dims = open_vid["data"][0].shape
 
     tmp_dir = args.tmp_dir.resolve()
-    if not list(tmp_dir.rglob("stat.npy")):
+    suite2p_stat_path = find_one(tmp_dir, "stat.npy", required=False)
+    if suite2p_stat_path is None:
         traces_roi, traces_neuropil, traces_corrected = [
             np.empty((0, nframes), dtype=np.float32)
         ] * 3
@@ -1056,8 +1056,7 @@ def run_suite2p_extraction(
             "dims": dims,
         }
 
-    suite2p_stat_path = str(next(tmp_dir.rglob("stat.npy")))
-    suite2p_stats = np.load(suite2p_stat_path, allow_pickle=True)
+    suite2p_stats = np.load(str(suite2p_stat_path), allow_pickle=True)
 
     if args.neuropil in ("mutualinfo", "suite2p"):
         if instrument_id and "Bergamo" in instrument_id:
@@ -1071,11 +1070,11 @@ def run_suite2p_extraction(
                 suite2p_stats, h5py.File(input_fn)["data"], ops=suite2p_args
             )
         else:
-            suite2p_f_path = str(next(tmp_dir.rglob("F.npy")))
-            suite2p_fneu_path = str(next(tmp_dir.rglob("Fneu.npy")))
+            suite2p_f_path = str(find_one(tmp_dir, "F.npy"))
+            suite2p_fneu_path = str(find_one(tmp_dir, "Fneu.npy"))
             traces_roi = np.load(suite2p_f_path, allow_pickle=True)
             traces_neuropil = np.load(suite2p_fneu_path, allow_pickle=True)
-        iscell = np.load(str(next(tmp_dir.rglob("iscell.npy"))))
+        iscell = np.load(str(find_one(tmp_dir, "iscell.npy")))
         if args.neuropil == "suite2p":
             traces_corrected = (
                 traces_roi - suite2p_args["neucoeff"] * traces_neuropil
@@ -1126,8 +1125,8 @@ def run_suite2p_extraction(
                 for roi in suite2p_stats
             ]
         )
-        ops_path = str(next(tmp_dir.rglob("ops.npy"), ""))
-        ops = np.load(ops_path, allow_pickle=True)[()]
+        ops_path = find_one(tmp_dir, "ops.npy")
+        ops = np.load(str(ops_path), allow_pickle=True)[()]
         n_jobs = None if (tmp := os.environ.get("CO_CPUS")) is None else int(tmp)
         (
             traces_corrected,
@@ -1200,12 +1199,9 @@ def write_extraction_h5(
     raw_r = suite2p_result.get("raw_r", [])
 
     tmp_dir = args.tmp_dir.resolve()
-    cellpose_path = str(next(tmp_dir.rglob("cellpose.npz"), ""))
-    ops_path = str(next(tmp_dir.rglob("ops.npy"), ""))
-    if ops_path:
-        ops = np.load(ops_path, allow_pickle=True)[()]
-    else:
-        ops = {}
+    cellpose_path = find_one(tmp_dir, "cellpose.npz", required=False)
+    ops_path = find_one(tmp_dir, "ops.npy", required=False)
+    ops = np.load(str(ops_path), allow_pickle=True)[()] if ops_path else {}
 
     out_fp = output_dir / f"{unique_id}_extraction.h5"
     shape = np.array([len(traces_roi), *dims], dtype=np.int16)
@@ -1235,7 +1231,7 @@ def write_extraction_h5(
                 "rois/neuropil_coords", data=neuropil_coords, compression="gzip"
             )
         if cellpose_path:
-            with np.load(cellpose_path) as cp:
+            with np.load(str(cellpose_path)) as cp:
                 for k in cp.keys():
                     f.create_dataset(f"cellpose/{k}", data=cp[k], compression="gzip")
                 roi_masks = sparse.COO(coords, data, shape).todense()

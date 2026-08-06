@@ -5,14 +5,13 @@ read metadata (v1 or v2) -> configure logging -> locate the registered
 movie -> run Suite2p/CaImAn -> write output HDF5 + diagnostics ->
 emit a full ``processing.json`` and ``quality_control.json``.
 
-``processing.json`` is written from a ``finally`` block so a failed run
-still leaves a document describing what was attempted, with the error
-recorded in ``notes``.
+The shared ``stage_guard`` owns the ``processing.json`` lifecycle, so a
+failed run still leaves a document describing what was attempted, with the
+error recorded in ``notes``.
 """
 
 import logging
 import os
-from datetime import datetime as dt
 from pathlib import Path
 from typing import Optional
 
@@ -20,7 +19,9 @@ import h5py
 import numpy as np
 import sparse
 from aind_ophys_utils.summary_images import max_corr_image, mean_image, max_image
-from aind_pophys_metadata import io
+from aind_pophys_metadata.paths import find_one, relative_to_root
+from aind_pophys_metadata.processing import collect_upstream_process_names
+from aind_pophys_metadata.runner import stage_guard
 from log_schema.main import setup_logging
 
 from . import qc
@@ -35,21 +36,13 @@ from .extraction import (
 )
 from .settings import ExtractionSettings
 from .utils import metadata_utils as mu
-from .utils.paths import relative_to_root
 
 logger = logging.getLogger("Ophys extraction")
 
 PROCESS_NAME = "aind-ophys-extraction"
-_BERGAMO_INSTRUMENT = "Bergamo"
 
-
-def _load_session_raw(input_dir: Path) -> dict:
-    """Load the raw v1 session dict for Bergamo photostim-frame filtering.
-
-    Returns an empty dict when no ``session.json`` is present (v2-only inputs).
-    """
-    session_fp = io.find(input_dir, "session.json")
-    return io.load_json(session_fp) if session_fp else {}
+#: A prior run's output mounted alongside the input marks this plane done.
+EXISTING_OUTPUT_DIR = "output"
 
 
 def _verify_outputs(output_dir: Path) -> None:
@@ -67,25 +60,10 @@ def _verify_outputs(output_dir: Path) -> None:
 
 def _locate_input_movie(input_dir: Path) -> Path:
     """Return the decrosstalked movie if present, else the registered one."""
-    decrosstalk = next(input_dir.rglob("*decrosstalk.h5"), None)
+    decrosstalk = find_one(input_dir, "*decrosstalk.h5", required=False)
     if decrosstalk is not None:
         return decrosstalk
-    return next(input_dir.rglob("*registered.h5"))
-
-
-def _resolve_frame_rate(
-    metadata: mu.ExtractionMetadata, settings: ExtractionSettings
-) -> float:
-    """Resolve the frame rate from metadata, falling back to the CLI value."""
-    frame_rate = metadata.frame_rate
-    if frame_rate is None:
-        frame_rate = settings.frame_rate
-        logger.warning("Using CLI fallback frame rate: %s", settings.frame_rate)
-    if frame_rate is None:
-        raise ValueError(
-            "frame_rate could not be resolved from metadata or --frame_rate"
-        )
-    return frame_rate
+    return find_one(input_dir, "*registered.h5")
 
 
 def _run_detection(
@@ -94,7 +72,6 @@ def _run_detection(
     motion_corrected_fn: Path,
     input_fn: Path,
     unique_id: str,
-    frame_rate: float,
 ) -> dict:
     """Run the CaImAn-only or Suite2p detection path and return its result."""
     n_jobs = None if (tmp := os.environ.get("CO_CPUS")) is None else int(tmp)
@@ -104,7 +81,7 @@ def _run_detection(
             motion_corrected_fn=motion_corrected_fn,
             input_fn=input_fn,
             args=settings,
-            frame_rate=frame_rate,
+            frame_rate=metadata.frame_rate,
             instrument_id=metadata.instrument_id,
         )
 
@@ -158,9 +135,9 @@ def _build_rois(result: dict) -> sparse.COO:
 
 def _load_ops(tmp_dir: Path, motion_corrected_fn: Path) -> dict:
     """Load Suite2p ops, computing summary images for the CaImAn path."""
-    ops_path = str(next(tmp_dir.rglob("ops.npy"), ""))
-    if ops_path:
-        return np.load(ops_path, allow_pickle=True)[()]
+    ops_path = find_one(tmp_dir, "ops.npy", required=False)
+    if ops_path is not None:
+        return np.load(str(ops_path), allow_pickle=True)[()]
     with h5py.File(str(motion_corrected_fn), "r") as open_vid:
         return {
             "meanImg": mean_image(open_vid["data"]),
@@ -213,45 +190,32 @@ def _write_quality_control(
     qc.write_quality_control_json(qc.build_quality_control([metric]), output_dir)
 
 
-def _write_processing_metadata(
-    settings: ExtractionSettings,
-    ctx: dict,
-    start_time: dt,
-    error: Optional[BaseException],
-) -> None:
-    """Best-effort writer for processing.json. Never raises.
-
-    Failures here must not mask an extraction failure already propagating
-    out of ``run()``. Falls back to the results root when the run failed
-    before the per-plane output directory was created.
-    """
-    results_root = settings.output_dir.resolve()
-    output_dir = ctx.get("output_dir") or results_root
-    try:
-        data_process = mu.build_data_process(
-            parameters=ctx.get("parameters") or settings.model_dump(),
-            start_time=start_time,
-            end_time=dt.now(),
-            input_data=ctx.get("input_data"),
-            output_path=relative_to_root(results_root, output_dir),
-            plane_id=ctx.get("unique_id"),
-            error=error,
-        )
-        mu.write_processing_json(mu.build_processing([data_process]), output_dir)
-    except Exception as proc_exc:
-        logger.error(f"processing.json write failed (non-fatal): {proc_exc}")
-
-
 def _run_extraction(
     settings: ExtractionSettings,
     metadata: mu.ExtractionMetadata,
-    ctx: dict,
-) -> None:
-    """Locate the input movie, detect ROIs, and write all outputs.
+    input_fn: Path,
+    output_dir: Path,
+    unique_id: str,
+) -> dict:
+    """Detect ROIs and write every output for one plane.
 
-    ``ctx`` is populated as the run progresses so the ``processing.json``
-    writer in ``run()``'s ``finally`` can report partial provenance even
-    when this raises.
+    Parameters
+    ----------
+    settings : ExtractionSettings
+        Parsed settings.
+    metadata : ExtractionMetadata
+        Metadata view for this asset.
+    input_fn : Path
+        Located input movie.
+    output_dir : Path
+        Per-plane extraction output directory.
+    unique_id : str
+        Plane/FOV id.
+
+    Returns
+    -------
+    dict
+        Summary statistics for ``DataProcess.output_parameters``.
     """
     os.environ["MKL_NUM_THREADS"] = "1"
     os.environ["OPENBLAS_NUM_THREADS"] = "1"
@@ -259,25 +223,14 @@ def _run_extraction(
     os.environ["CAIMAN_TEMP"] = str(settings.tmp_dir)
 
     results_root = settings.output_dir.resolve()
-    input_dir = settings.input_dir.resolve()
     tmp_dir = settings.tmp_dir.resolve()
 
-    input_fn = _locate_input_movie(input_dir)
-    unique_id = input_fn.parent.parent.name
-    ctx["unique_id"] = unique_id
-    ctx["input_data"] = [relative_to_root(input_dir, input_fn)]
-
-    session_raw = _load_session_raw(input_dir)
-    if metadata.instrument_id and _BERGAMO_INSTRUMENT in metadata.instrument_id:
+    if mu.is_bergamo(metadata.instrument_id):
         motion_corrected_fn = bergamo_segmentation(
-            input_fn, session_raw, temp_dir=tmp_dir
+            input_fn, metadata.valid_epoch_stems, temp_dir=tmp_dir
         )
     else:
         motion_corrected_fn = input_fn
-
-    frame_rate = _resolve_frame_rate(metadata, settings)
-    output_dir = make_output_directory(results_root, unique_id)
-    ctx["output_dir"] = output_dir
 
     result = _run_detection(
         settings,
@@ -285,9 +238,7 @@ def _run_extraction(
         motion_corrected_fn,
         input_fn,
         unique_id,
-        frame_rate,
     )
-    ctx["parameters"] = result.get("input_args", settings.model_dump())
 
     write_extraction_h5(
         output_dir=output_dir,
@@ -305,10 +256,13 @@ def _run_extraction(
         motion_corrected_fn,
         result,
         rois,
-        frame_rate,
+        metadata.frame_rate,
     )
     _write_quality_control(
         results_root, output_dir, unique_id, rois.shape[0]
+    )
+    return mu.build_output_parameters(
+        result, rois.shape[0], metadata.frame_rate
     )
 
 
@@ -323,9 +277,12 @@ def run(settings: Optional[ExtractionSettings] = None) -> None:
         through the core v2 schema objects after writing.
     """
     settings = settings or ExtractionSettings()
-    start_time = dt.now()
+    input_dir = settings.input_dir.resolve()
+    results_root = settings.output_dir.resolve()
 
-    metadata = mu.load_extraction_metadata(settings.input_dir)
+    metadata = mu.load_extraction_metadata(
+        input_dir, frame_rate_override=settings.frame_rate
+    )
     setup_logging(
         use_cloudwatch=True,
         model={
@@ -333,34 +290,42 @@ def run(settings: Optional[ExtractionSettings] = None) -> None:
             "process_name": PROCESS_NAME,
         },
     )
-    logger.info("Starting extraction", extra={"event_type": "stage_start"})
 
     # Already-processed guard: a prior run's output is mounted alongside the
     # input. Skip cleanly (no processing.json for a no-op run).
-    existing_output = next(settings.input_dir.resolve().glob("output"), None)
+    existing_output = find_one(
+        input_dir, EXISTING_OUTPUT_DIR, recursive=False, required=False
+    )
     if existing_output is not None:
         logger.info(
             "Found %s in the input directory; this plane is already "
             "processed. Exiting without running extraction.",
             existing_output,
-            extra={"event_type": "stage_complete"},
         )
         return
 
-    ctx: dict = {}
-    run_error: Optional[BaseException] = None
-    try:
-        _run_extraction(settings, metadata, ctx)
-        logger.info(
-            "Extraction complete", extra={"event_type": "stage_complete"}
+    input_fn = _locate_input_movie(input_dir)
+    unique_id = input_fn.parent.parent.name
+    output_dir = make_output_directory(results_root, unique_id)
+    code = mu.build_extraction_code(
+        parameters=settings.model_dump(),
+        input_data=[relative_to_root(input_dir, input_fn)],
+    )
+
+    with stage_guard(
+        output_dir,
+        mu.PROCESS_TYPE,
+        code,
+        plane_id=unique_id,
+        logger=logger,
+        output_path=relative_to_root(results_root, output_dir),
+    ) as ctx:
+        ctx.upstream_names = collect_upstream_process_names(
+            input_dir, exclude=mu.process_name(unique_id)
         )
-    except BaseException as exc:
-        run_error = exc
-        logger.error("Extraction failed", extra={"event_type": "stage_error"})
-        logger.exception("Unhandled exception")
-        raise
-    finally:
-        _write_processing_metadata(settings, ctx, start_time, run_error)
+        ctx.output_parameters = _run_extraction(
+            settings, metadata, input_fn, output_dir, unique_id
+        )
 
     if settings.verify:
-        _verify_outputs(ctx["output_dir"])
+        _verify_outputs(output_dir)
