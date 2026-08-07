@@ -23,6 +23,7 @@ from importlib.metadata import version
 from pathlib import Path
 from unittest.mock import patch
 
+import numpy as np
 from aind_data_schema.core.processing import Processing
 from aind_pophys_metadata import processing as shared_processing
 from aind_pophys_metadata.runner import stage_guard
@@ -344,6 +345,50 @@ class TestOutputParameters(unittest.TestCase):
         }
         result.update(overrides)
         return result
+
+    def test_numpy_result_is_supported(self):
+        """Suite2p hands back numpy arrays, not lists.
+
+        Regression for a production failure: the builder used
+        ``result.get(key) or default``, which calls ``__bool__`` on an array
+        and raises ``ValueError: The truth value of an array with more than
+        one element is ambiguous``. The list-based fixtures below never
+        exercised that, so the whole test suite passed while a real run died
+        after extraction had already finished.
+        """
+        summary = mu.build_output_parameters(
+            {
+                "traces_corrected": np.zeros((279, 46307)),
+                "iscell": np.column_stack(
+                    (np.ones(279), np.full(279, 0.9))
+                ),
+                "nframes": 46307,
+                "dims": np.array([512, 512]),
+            },
+            279,
+            10.71,
+        )
+        self.assertEqual(summary["n_rois"], 279)
+        self.assertEqual(summary["n_traces"], 279)
+        self.assertEqual(summary["n_frames"], 46307)
+        self.assertEqual(summary["n_rois_classified_as_cells"], 279)
+        self.assertEqual(summary["movie_height_px"], 512)
+        self.assertEqual(summary["movie_width_px"], 512)
+
+    def test_empty_numpy_arrays_are_supported(self):
+        """A zero-ROI run still reports honestly rather than raising."""
+        summary = mu.build_output_parameters(
+            {
+                "traces_corrected": np.zeros((0, 0)),
+                "iscell": np.zeros((0, 2)),
+                "nframes": 0,
+                "dims": np.array([512, 512]),
+            },
+            0,
+            10.71,
+        )
+        self.assertEqual(summary["n_traces"], 0)
+        self.assertEqual(summary["n_rois_classified_as_cells"], 0)
 
     def test_summary_fields(self):
         """Counts, frame rate and movie shape are all recorded."""

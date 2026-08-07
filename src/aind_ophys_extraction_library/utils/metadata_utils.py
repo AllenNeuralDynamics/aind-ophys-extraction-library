@@ -362,14 +362,20 @@ def build_output_parameters(
         Scalar summary statistics. Keys whose value could not be determined
         are omitted rather than recorded as ``None``.
     """
-    dims = result.get("dims") or ()
+    # `result` holds numpy arrays, so `x or default` is unusable here: it
+    # calls __bool__ on the array and raises for anything longer than one
+    # element. Test against None explicitly.
+    dims = result.get("dims")
+    dims = () if dims is None else tuple(dims)
+    traces = result.get("traces_corrected")
+    nframes = result.get("nframes")
     summary: Dict[str, Any] = {
         "n_rois": int(num_rois),
-        "n_traces": len(result.get("traces_corrected") or []),
-        "n_frames": int(result.get("nframes") or 0),
+        "n_traces": 0 if traces is None else len(traces),
+        "n_frames": 0 if nframes is None else int(nframes),
         "frame_rate_hz": float(frame_rate),
     }
-    num_cells = _count_cells(result.get("iscell") or [])
+    num_cells = _count_cells(result.get("iscell"))
     if num_cells is not None:
         summary["n_rois_classified_as_cells"] = num_cells
     if len(dims) == 2:
