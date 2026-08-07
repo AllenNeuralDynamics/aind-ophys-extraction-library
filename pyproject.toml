@@ -26,15 +26,16 @@ version = "0.0.0"
 # caiman is the one exception and must NOT be added. The real CaImAn (1.10.3,
 # what the image runs) is published on conda-forge only; the name `caiman` on
 # PyPI is an unrelated MicroPython build tool at 0.1.0, so declaring it would
-# silently install the wrong package rather than fail. The mambaforge base
-# image supplies it via conda.
+# silently install the wrong package rather than fail. The capsule installs it
+# with `mamba install caiman==1.10.3`, in an installer step that runs before
+# pip, and also sets CAIMAN_TEMP=/scratch.
 #
-# numpy, scipy, opencv-python, matplotlib and imageio-ffmpeg are pinned to the
-# exact versions the base image already carries. That is deliberate: the
-# conda-provided caiman is built against them, so pip must see the requirement
-# as already satisfied and leave them in place. If one of these pins is ever
-# raised, pip will install over caiman's linkage - verify caiman still imports
-# in the built image before changing any of them.
+# numpy, scipy, opencv-python, matplotlib and imageio-ffmpeg arrive as conda
+# dependencies of that caiman install. They are pinned here to the versions
+# that install resolves, so pip sees each requirement as already satisfied and
+# leaves the conda build in place. If one of these pins is ever raised, pip
+# will install over caiman's linkage - verify caiman still imports in the
+# built image before changing any of them.
 dependencies = [
     "aind-data-schema==2.9.0",
     "aind-data-schema-models==6.2.0",
