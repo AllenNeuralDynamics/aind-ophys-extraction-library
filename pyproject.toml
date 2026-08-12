@@ -42,7 +42,7 @@ dependencies = [
     "aind-qcportal-schema==0.6.4",
     "aind-ophys-utils==0.2.0",
     "log-schema[cloudwatch] @ git+https://github.com/AllenNeuralDynamics/aind-log-utils.git@f09685e#subdirectory=python",
-    "aind-pophys-metadata @ git+https://github.com/AllenNeuralDynamics/aind-pophys-metadata.git@afcb367f71c3127173a1ae4357135a41901e0466",
+    "aind-pophys-metadata @ git+https://github.com/AllenNeuralDynamics/aind-pophys-metadata.git@123f5cf25ca3a12b572bbba58c6449814d41f19f",
     "pydantic==2.8.2",
     "pydantic-settings==2.14.2",
     "pytz",

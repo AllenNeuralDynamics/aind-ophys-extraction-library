@@ -6,7 +6,7 @@ and free of caiman / suite2p / aind-data-schema side effects.
 
 import logging
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -315,7 +315,7 @@ class ExtractionSettings(BaseSettings, cli_parse_args=True):
 
         return None
 
-    def model_post_init(self, _) -> None:
+    def model_post_init(self, _: Any) -> None:
         """Run validation after model initialization."""
         warning = self.validate_consistency()
         if warning:

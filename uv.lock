@@ -92,7 +92,7 @@ requires-dist = [
     { name = "aind-data-schema", specifier = "==2.9.0" },
     { name = "aind-data-schema-models", specifier = "==6.2.0" },
     { name = "aind-ophys-utils", specifier = "==0.2.0" },
-    { name = "aind-pophys-metadata", git = "https://github.com/AllenNeuralDynamics/aind-pophys-metadata.git?rev=afcb367f71c3127173a1ae4357135a41901e0466" },
+    { name = "aind-pophys-metadata", git = "https://github.com/AllenNeuralDynamics/aind-pophys-metadata.git?rev=123f5cf25ca3a12b572bbba58c6449814d41f19f" },
     { name = "aind-qcportal-schema", specifier = "==0.6.4" },
     { name = "cellpose", specifier = "==3.0.10" },
     { name = "h5py", specifier = "==3.11.0" },
@@ -146,7 +146,7 @@ wheels = [
 [[package]]
 name = "aind-pophys-metadata"
 version = "0.1.0"
-source = { git = "https://github.com/AllenNeuralDynamics/aind-pophys-metadata.git?rev=afcb367f71c3127173a1ae4357135a41901e0466#afcb367f71c3127173a1ae4357135a41901e0466" }
+source = { git = "https://github.com/AllenNeuralDynamics/aind-pophys-metadata.git?rev=123f5cf25ca3a12b572bbba58c6449814d41f19f#123f5cf25ca3a12b572bbba58c6449814d41f19f" }
 dependencies = [
     { name = "aind-data-schema" },
     { name = "aind-data-schema-models" },

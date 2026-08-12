@@ -323,9 +323,22 @@ def run(settings: Optional[ExtractionSettings] = None) -> None:
         ctx.upstream_names = collect_upstream_process_names(
             input_dir, exclude=mu.process_name(unique_id)
         )
-        ctx.output_parameters = _run_extraction(
-            settings, metadata, input_fn, output_dir, unique_id
+        # Which cellpose files this run will load, and which of them are
+        # already local, is only observable before detection starts; their
+        # digests only exist afterwards. Recorded in a finally so a failed
+        # run still names the model bytes it got as far as loading.
+        model_plan = mu.plan_cellpose_models(
+            settings.init, settings.diameter, settings.pretrained_model
         )
+        try:
+            ctx.output_parameters = _run_extraction(
+                settings, metadata, input_fn, output_dir, unique_id
+            )
+        finally:
+            if model_plan is not None:
+                ctx.parameters[mu.CELLPOSE_MODELS_PARAMETER] = (
+                    mu.build_cellpose_provenance(model_plan)
+                )
 
     if settings.verify:
         _verify_outputs(output_dir)

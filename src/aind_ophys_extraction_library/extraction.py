@@ -14,7 +14,7 @@ import logging
 import os
 from multiprocessing.pool import Pool, ThreadPool
 from pathlib import Path
-from typing import Optional, Sequence, Tuple, Union
+from typing import Any, Optional, Sequence, Tuple, Union
 
 import caiman
 import cv2
@@ -577,7 +577,7 @@ def run_caiman_extraction(
 
 
 def format_caiman_output(
-    e,
+    e: Any,
     cnmfe: bool,
     Yr: np.ndarray,
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
@@ -779,7 +779,7 @@ def contour_video(
         mov[:: max(1, len(mov) // 100)], (lower_quantile, upper_quantile)
     )
 
-    def scale(m):
+    def scale(m: np.ndarray) -> np.ndarray:
         """Normalise and clip to uint8."""
         return np.array(
             ThreadPool(n_jobs).map(

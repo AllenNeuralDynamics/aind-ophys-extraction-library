@@ -7,6 +7,8 @@ the extraction ``ExtractionMetadata`` view, the extraction ``Code`` block, and
 the output summary written to ``DataProcess.output_parameters``.
 """
 
+import logging
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -15,6 +17,13 @@ from aind_data_schema.components.identifiers import Code
 from aind_data_schema_models.process_names import ProcessName
 from aind_pophys_metadata import fields, io
 from aind_pophys_metadata import processing as shared_processing
+from aind_pophys_metadata import (
+    MODEL_SOURCE_ASSET,
+    MODEL_SOURCE_NETWORK,
+    model_provenance,
+)
+
+logger = logging.getLogger("Ophys extraction")
 
 #: Distribution name of this backing library. The shared builder derives both
 #: ``Code.url`` and ``Code.version`` from it.
@@ -35,6 +44,34 @@ PHOTOSTIM_STIMULUS_NAME = "2p photostimulation"
 #: v1 -> v2 upgrade drops that field, but keeps the same value on the
 #: correspondingly-timed data stream's ``notes``, as ``tiff_stem:<stem>``.
 TIFF_STEM_NOTE_PREFIX = "tiff_stem:"
+
+#: Environment variable cellpose itself reads to locate its model files
+#: (``cellpose.models.MODEL_DIR``). A cellpose convention, not a Code Ocean
+#: one: the capsule wrapper decides which directory it points at, and this
+#: library only reports whatever the loader used.
+CELLPOSE_MODELS_PATH_ENV = "CELLPOSE_LOCAL_MODELS_PATH"
+
+#: Directory cellpose falls back to when the variable is unset.
+CELLPOSE_DEFAULT_MODELS_DIR = Path.home() / ".cellpose" / "models"
+
+#: ``Code.parameters`` key holding the cellpose model provenance records.
+CELLPOSE_MODELS_PARAMETER = "cellpose_models"
+
+#: ``init`` modes that pass a summary image to Suite2p's anatomical detection,
+#: which segments it with ``pretrained_model``.
+ANATOMICAL_INIT_MODES = ("max/mean", "mean", "enhanced_mean", "max")
+
+#: ``init`` modes that estimate the cell diameter from a bare ``Cellpose()``
+#: when ``diameter == 0`` and otherwise never load a model.
+AUTO_DIAMETER_INIT_MODES = ("sourcery", "greedy_roi", "corr_pnr")
+
+#: Model a bare ``Cellpose()`` resolves in cellpose 3.x.
+AUTO_DIAMETER_MODEL = "cyto3"
+
+#: Models whose files cellpose names with a ``torch`` infix; every other name
+#: is used verbatim. Mirrors ``cellpose.models.model_path`` /
+#: ``size_model_path``.
+_TORCH_NAMED_MODELS = ("cyto", "cyto2", "nuclei")
 
 
 def is_bergamo(instrument_id: Optional[str]) -> bool:
@@ -282,6 +319,159 @@ def process_name(plane_id: str) -> str:
     return f"{plane_id}: {PROCESS_TYPE.value}"
 
 
+def cellpose_model_files(model_type: str) -> Tuple[str, str]:
+    """Return the two file basenames cellpose loads for ``model_type``.
+
+    Both are needed: ``Cellpose.__init__`` builds the diameter-estimating
+    ``SizeModel`` unconditionally, before ``diameter`` is considered, so the
+    size model is resolved even on a run that never estimates a diameter.
+
+    Parameters
+    ----------
+    model_type : str
+        Built-in cellpose model name, for example ``"cyto"`` or ``"cyto3"``.
+
+    Returns
+    -------
+    tuple of str
+        The segmentation net basename and the size-model basename.
+    """
+    if model_type in _TORCH_NAMED_MODELS:
+        return (f"{model_type}torch_0", f"size_{model_type}torch_0.npy")
+    return (model_type, f"size_{model_type}.npy")
+
+
+def cellpose_models_dir() -> Path:
+    """Return the directory cellpose resolves model files in.
+
+    Read from the environment rather than assumed, so the deployment - not
+    this library - owns where the bytes live.
+
+    Returns
+    -------
+    Path
+        :data:`CELLPOSE_MODELS_PATH_ENV` when set, else cellpose's own
+        per-user cache directory.
+    """
+    value = os.environ.get(CELLPOSE_MODELS_PATH_ENV)
+    return Path(value) if value else CELLPOSE_DEFAULT_MODELS_DIR
+
+
+@dataclass(frozen=True)
+class CellposeModelPlan:
+    """The cellpose files one run loads, and which were already local.
+
+    ``present_before`` is captured before detection runs, which is the only
+    moment the distinction is observable: a file absent then and present
+    afterwards was downloaded by the loader. Policy is local-first with a
+    network fallback, so both outcomes are legitimate and the record only
+    states which one happened.
+    """
+
+    model_type: str
+    directory: Path
+    filenames: Tuple[str, ...]
+    present_before: Tuple[str, ...]
+
+    @property
+    def source_name(self) -> str:
+        """Stable logical label for the source, never a filesystem path."""
+        return self.directory.name or self.model_type
+
+
+def plan_cellpose_models(
+    init: str, diameter: int, pretrained_model: str
+) -> Optional[CellposeModelPlan]:
+    """Plan the cellpose provenance record for one extraction run.
+
+    Extraction reaches cellpose two ways, and they are mutually exclusive.
+    The anatomical ``init`` modes segment a summary image with Suite2p's
+    ``pretrained_model``; the functional modes load nothing unless
+    ``diameter == 0``, in which case a bare ``Cellpose()`` estimates it from
+    cellpose 3.x's default model. Every other combination - ``sparsery``, or
+    a functional mode with an operator-supplied diameter - never loads a
+    model, and yields ``None`` rather than a speculative record.
+
+    Parameters
+    ----------
+    init : str
+        Resolved ``ExtractionSettings.init``.
+    diameter : int
+        Resolved ``ExtractionSettings.diameter``; ``0`` requests estimation.
+    pretrained_model : str
+        Resolved ``ExtractionSettings.pretrained_model``.
+
+    Returns
+    -------
+    CellposeModelPlan or None
+        The files to describe, or ``None`` when this run loads no model or
+        loads one whose files cannot be named.
+    """
+    if init in ANATOMICAL_INIT_MODES:
+        if os.sep in pretrained_model or Path(pretrained_model).exists():
+            logger.warning(
+                "pretrained_model %r is a custom model file, whose provenance "
+                "this capsule cannot name; omitting cellpose provenance.",
+                pretrained_model,
+            )
+            return None
+        model_type = pretrained_model
+    elif init in AUTO_DIAMETER_INIT_MODES and diameter == 0:
+        model_type = AUTO_DIAMETER_MODEL
+    else:
+        return None
+
+    directory = cellpose_models_dir()
+    filenames = cellpose_model_files(model_type)
+    return CellposeModelPlan(
+        model_type=model_type,
+        directory=directory,
+        filenames=filenames,
+        present_before=tuple(
+            name for name in filenames if (directory / name).is_file()
+        ),
+    )
+
+
+def build_cellpose_provenance(
+    plan: CellposeModelPlan,
+) -> List[Dict[str, str]]:
+    """Describe the cellpose model bytes a run loaded.
+
+    Provenance only: nothing is compared against an expected digest and no
+    mismatch can fail this call. A file still absent after the run is omitted
+    by the shared helper rather than asserted.
+
+    Parameters
+    ----------
+    plan : CellposeModelPlan
+        Plan built by :func:`plan_cellpose_models` before detection ran.
+
+    Returns
+    -------
+    list of dict
+        One record per file found, each with ``filename``, ``sha256``,
+        ``source_name`` and ``source``.
+    """
+    records: List[Dict[str, str]] = []
+    for source, names in (
+        (MODEL_SOURCE_ASSET, plan.present_before),
+        (
+            MODEL_SOURCE_NETWORK,
+            tuple(n for n in plan.filenames if n not in plan.present_before),
+        ),
+    ):
+        records.extend(
+            model_provenance(
+                plan.directory,
+                names,
+                source_name=plan.source_name,
+                source=source,
+            )
+        )
+    return records
+
+
 def build_extraction_code(
     parameters: dict,
     input_data: Optional[List[str]] = None,
@@ -312,7 +502,7 @@ def build_extraction_code(
     )
 
 
-def _count_cells(iscell) -> Optional[int]:
+def _count_cells(iscell: Any) -> Optional[int]:
     """Return how many ROIs Suite2p/CaImAn classified as cells.
 
     Parameters
