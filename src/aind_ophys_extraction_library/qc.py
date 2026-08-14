@@ -4,8 +4,8 @@ Capsule-specific metric content over the shared ``aind_pophys_metadata``
 QC builders. The ``QualityControl`` wrapper with the project-standard
 ``default_grouping`` and the writer both live in the shared library. This
 module owns the extraction-specific ``CheckboxMetric`` for detected ROIs.
-``job.run`` accumulates metrics and emits ONE full ``quality_control.json``
-(never per-metric files).
+``job.py`` collects the metrics and emits ONE full ``quality_control.json``
+per plane (never per-metric files).
 """
 
 from datetime import datetime as dt

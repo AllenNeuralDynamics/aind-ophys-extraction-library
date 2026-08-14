@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "aind-ophys-extraction-library"
-description = "Generated from aind-library-template"
+description = "ROI detection and trace extraction for AIND ophys movies"
 license = "MIT"
 # Capped at <3.11 because suite2p gives a frozen dataclass an ndarray default,
 # which dataclasses reject from 3.11 on ("mutable default ... use
@@ -42,7 +42,7 @@ dependencies = [
     "aind-qcportal-schema==0.6.4",
     "aind-ophys-utils==0.2.0",
     "log-schema[cloudwatch] @ git+https://github.com/AllenNeuralDynamics/aind-log-utils.git@f09685e#subdirectory=python",
-    "aind-pophys-metadata @ git+https://github.com/AllenNeuralDynamics/aind-pophys-metadata.git@123f5cf25ca3a12b572bbba58c6449814d41f19f",
+    "aind-pophys-metadata @ git+https://github.com/AllenNeuralDynamics/aind-pophys-metadata.git@b473a1e5288096c48e47d2bf03cb24d48ef46b50",
     "pydantic==2.8.2",
     "pydantic-settings==2.14.2",
     "pytz",

@@ -1,10 +1,12 @@
-"""aind-data-schema v1/v2 metadata reads for ophys extraction.
+"""Acquisition metadata reads for ophys extraction.
 
 A thin, capsule-specific layer over the shared ``aind_pophys_metadata``
-library. The v1/v2 dict paths, schema-version dispatch, path helpers and the
-``Processing`` builders live in the shared library; this module only assembles
-the extraction ``ExtractionMetadata`` view, the extraction ``Code`` block, and
-the output summary written to ``DataProcess.output_parameters``.
+library. Every schema-version difference is resolved by
+:class:`~aind_pophys_metadata.core.CoreMetadata`, which reads one located
+document regardless of the schema it is written in; this module assembles the
+extraction ``ExtractionMetadata`` view, the extraction ``Code`` block, the
+cellpose model provenance recorded in ``Code.parameters``, and the output
+summary written to ``DataProcess.output_parameters``.
 """
 
 import logging
@@ -15,19 +17,25 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from aind_data_schema.components.identifiers import Code
 from aind_data_schema_models.process_names import ProcessName
-from aind_pophys_metadata import fields, io
 from aind_pophys_metadata import processing as shared_processing
 from aind_pophys_metadata import (
     MODEL_SOURCE_ASSET,
     MODEL_SOURCE_NETWORK,
+    CoreMetadata,
     model_provenance,
 )
 
 logger = logging.getLogger("Ophys extraction")
 
-#: Distribution name of this backing library. The shared builder derives both
-#: ``Code.url`` and ``Code.version`` from it.
+#: Distribution name of this backing library. The shared builder derives
+#: ``Code.version`` from it.
 LIBRARY_NAME = "aind-ophys-extraction-library"
+
+#: Repository this code lives in, recorded as ``Code.url``. Only this repo
+#: knows where its own code lives, so the shared builder is told.
+REPOSITORY_URL = (
+    "https://github.com/AllenNeuralDynamics/aind-ophys-extraction-library"
+)
 
 CODE_NAME = "aind-ophys-extraction"
 
@@ -39,11 +47,6 @@ BERGAMO_INSTRUMENT = "Bergamo"
 #: Stimulus epochs with this name are photostimulation and are excluded from
 #: the movie Bergamo extraction runs on.
 PHOTOSTIM_STIMULUS_NAME = "2p photostimulation"
-
-#: v1 carried the TIFF stem on ``stimulus_epochs[*].output_parameters``. The
-#: v1 -> v2 upgrade drops that field, but keeps the same value on the
-#: correspondingly-timed data stream's ``notes``, as ``tiff_stem:<stem>``.
-TIFF_STEM_NOTE_PREFIX = "tiff_stem:"
 
 #: Environment variable cellpose itself reads to locate its model files
 #: (``cellpose.models.MODEL_DIR``). A cellpose convention, not a Code Ocean
@@ -95,12 +98,11 @@ class ExtractionMetadata:
     """Minimal metadata the extraction capsule consumes.
 
     ``frame_rate`` drives Suite2p temporal binning and is validated at load
-    time, so a rate-less asset fails with a message naming the file and schema
-    version rather than partway through ``run()``. ``instrument_id`` is used to
-    detect Bergamo rigs; ``valid_epoch_stems`` carries the Bergamo TIFF stems
-    that survive photostimulation filtering, resolved from whichever schema
-    version the input carries. The remaining fields are identifiers used for
-    logging and output naming.
+    time, so a rate-less asset fails with a message naming the file rather
+    than partway through ``run()``. ``instrument_id`` is used to detect
+    Bergamo rigs; ``valid_epoch_stems`` carries the Bergamo TIFF stems that
+    survive photostimulation filtering. The remaining fields are identifiers
+    used for logging and output naming.
     """
 
     frame_rate: float
@@ -110,144 +112,56 @@ class ExtractionMetadata:
     valid_epoch_stems: Tuple[str, ...] = ()
 
 
-def _v1_epoch_stems(core_raw: dict, core_file: Path) -> Tuple[str, ...]:
-    """Return non-photostimulation TIFF stems from a v1 ``session.json``.
+def valid_epoch_stems(core: CoreMetadata) -> Tuple[str, ...]:
+    """TIFF stems of the stimulus epochs Bergamo extraction keeps.
+
+    Photostimulation epochs are excluded: their frames are not part of the
+    movie extraction runs on. The filter matches on the stimulus name, which
+    is what production has always keyed on; the epoch's ``modalities`` is the
+    same epoch's second signal but is deliberately not the criterion here.
+
+    Order is exactly the order the acquisition metadata records, which is not
+    chronological in real assets. It must not be sorted: each stem is paired
+    positionally with a frame range in ``epoch_locations.json``.
 
     Parameters
     ----------
-    core_raw : dict
-        Raw ``session.json`` dict.
-    core_file : Path
-        Source file path, named in the error message.
+    core : aind_pophys_metadata.CoreMetadata
+        Located core acquisition metadata.
 
     Returns
     -------
     tuple of str
-        TIFF stems in stimulus-epoch order.
+        TIFF stems in recorded epoch order, photostimulation excluded.
 
     Raises
     ------
     ValueError
-        If an included epoch carries no ``output_parameters.tiff_stem``.
+        If a kept epoch carries no TIFF stem, since its frames then cannot be
+        located in ``epoch_locations.json``.
     """
     stems: List[str] = []
-    for epoch in core_raw.get("stimulus_epochs") or []:
-        if epoch.get("stimulus_name") == PHOTOSTIM_STIMULUS_NAME:
+    for epoch in core.get_epoch_records():
+        if epoch["stimulus_name"] == PHOTOSTIM_STIMULUS_NAME:
             continue
-        stem = (epoch.get("output_parameters") or {}).get("tiff_stem")
-        if not stem:
+        if not epoch["tiff_stem"]:
             raise ValueError(
-                f"Stimulus epoch {epoch.get('stimulus_name')!r} in "
-                f"{Path(core_file).name} has no "
-                "output_parameters.tiff_stem, so its frames cannot be "
-                "located in epoch_locations.json."
-            )
-        stems.append(stem)
-    return tuple(stems)
-
-
-def _v2_stems_by_start_time(core_raw: dict) -> Dict[Any, str]:
-    """Index v2 data-stream TIFF stems by stream start time.
-
-    Parameters
-    ----------
-    core_raw : dict
-        Raw ``acquisition.json`` dict.
-
-    Returns
-    -------
-    dict
-        Mapping of ``stream_start_time`` to TIFF stem.
-    """
-    stems: Dict[Any, str] = {}
-    for stream in core_raw.get("data_streams") or []:
-        notes = stream.get("notes") or ""
-        if notes.startswith(TIFF_STEM_NOTE_PREFIX):
-            stems[stream.get("stream_start_time")] = notes[
-                len(TIFF_STEM_NOTE_PREFIX):
-            ]
-    return stems
-
-
-def _v2_epoch_stems(core_raw: dict, core_file: Path) -> Tuple[str, ...]:
-    """Return non-photostimulation TIFF stems from a v2 ``acquisition.json``.
-
-    The v1 -> v2 upgrade drops ``stimulus_epochs[*].output_parameters``
-    entirely, so the stem is recovered from the data stream covering the same
-    time span, whose ``notes`` the upgrade preserves verbatim.
-
-    Parameters
-    ----------
-    core_raw : dict
-        Raw ``acquisition.json`` dict.
-    core_file : Path
-        Source file path, named in the error message.
-
-    Returns
-    -------
-    tuple of str
-        TIFF stems in stimulus-epoch order.
-
-    Raises
-    ------
-    ValueError
-        If no data stream shares an included epoch's start time.
-    """
-    by_start_time = _v2_stems_by_start_time(core_raw)
-    stems: List[str] = []
-    for epoch in core_raw.get("stimulus_epochs") or []:
-        if epoch.get("stimulus_name") == PHOTOSTIM_STIMULUS_NAME:
-            continue
-        start_time = epoch.get("stimulus_start_time")
-        stem = by_start_time.get(start_time)
-        if not stem:
-            raise ValueError(
-                f"Stimulus epoch {epoch.get('stimulus_name')!r} starting "
-                f"{start_time} in {Path(core_file).name} has no data stream "
-                f"with a {TIFF_STEM_NOTE_PREFIX!r} note at the same start "
-                "time, so its frames cannot be located in "
+                f"Stimulus epoch {epoch['stimulus_name']!r} in "
+                f"{core.core_path.name} carries no TIFF stem in the "
+                "acquisition metadata, so its frames cannot be located in "
                 "epoch_locations.json."
             )
-        stems.append(stem)
+        stems.append(epoch["tiff_stem"])
     return tuple(stems)
-
-
-def get_valid_epoch_stems(
-    version: str, core_raw: dict, core_file: Path
-) -> Tuple[str, ...]:
-    """TIFF stems of the epochs Bergamo extraction keeps, either version.
-
-    Parameters
-    ----------
-    version : str
-        Schema version (:data:`aind_pophys_metadata.io.SCHEMA_V1` or
-        ``SCHEMA_V2``).
-    core_raw : dict
-        Raw ``session.json`` (v1) or ``acquisition.json`` (v2) dict.
-    core_file : Path
-        Source file path, named in any error message.
-
-    Returns
-    -------
-    tuple of str
-        TIFF stems in stimulus-epoch order, photostimulation excluded.
-    """
-    if version == io.SCHEMA_V1:
-        return _v1_epoch_stems(core_raw, core_file)
-    return _v2_epoch_stems(core_raw, core_file)
 
 
 def load_extraction_metadata(
     input_dir: Path, frame_rate_override: Optional[float] = None
 ) -> ExtractionMetadata:
-    """Read v1/v2 metadata for extraction from ``input_dir``.
+    """Read the acquisition metadata extraction consumes from ``input_dir``.
 
-    Dispatches on which core file is present (``acquisition.json`` -> v2,
-    ``session.json`` -> v1). ``frame_rate`` falls back to ``platform.json``
-    and then to ``frame_rate_override``, and is fatal here rather than deep in
-    the run. ``subject_id`` is read from the core file (canonical) and falls
-    back to ``subject.json``. ``dataset_name`` comes from
-    ``data_description.json``.
+    The shared loader locates and reads the core file; a missing frame rate
+    is fatal here rather than deep in the run.
 
     Parameters
     ----------
@@ -265,35 +179,23 @@ def load_extraction_metadata(
     Raises
     ------
     FileNotFoundError
-        If neither ``acquisition.json`` nor ``session.json`` is found.
+        If no core metadata file is found.
     ValueError
-        If both core files are present (ambiguous input), or if no source
-        supplies a frame rate.
+        If the input is ambiguous or malformed, or if no source supplies a
+        frame rate.
     """
-    input_dir = Path(input_dir)
-    common = io.load_common(input_dir)
-    instrument_id = fields.get_instrument_id(common.version, common.core_raw)
+    core = CoreMetadata.load(Path(input_dir))
+    instrument_id = core.get_instrument_id()
     return ExtractionMetadata(
-        frame_rate=fields.resolve_frame_rate(
-            common.version,
-            common.core_raw,
-            common.platform_raw,
-            core_file=common.core_path,
-            input_dir=input_dir,
+        frame_rate=core.get_frame_rate(
             cli_override=frame_rate_override,
             required=True,
         ),
         instrument_id=instrument_id,
-        subject_id=fields.get_subject_id(
-            common.core_raw, common.subject_raw
-        ),
-        dataset_name=fields.get_dataset_name(common.data_description_raw),
+        subject_id=core.get_subject_id(),
+        dataset_name=core.get_dataset_name(),
         valid_epoch_stems=(
-            get_valid_epoch_stems(
-                common.version, common.core_raw, common.core_path
-            )
-            if is_bergamo(instrument_id)
-            else ()
+            valid_epoch_stems(core) if is_bergamo(instrument_id) else ()
         ),
     )
 
@@ -491,12 +393,13 @@ def build_extraction_code(
     Returns
     -------
     Code
-        The populated code block. Url and version both come from the
-        installed backing library, so the two always describe one artifact.
+        The populated code block. The version comes from the installed
+        backing library, whose repository :data:`REPOSITORY_URL` names.
     """
     return shared_processing.build_code(
         CODE_NAME,
         library_name=LIBRARY_NAME,
+        url=REPOSITORY_URL,
         parameters=parameters,
         input_data=input_data,
     )

@@ -12,42 +12,41 @@ from aind_ophys_extraction_library import qc
 class TestDetectedROIsMetric(unittest.TestCase):
     """build_detected_rois_metric carries the expected tags and values."""
 
-    def test_metric_name_contains_unique_id(self):
+    def test_metric_name_contains_unique_id(self) -> None:
         """Metric name contains the plane unique_id."""
         m = qc.build_detected_rois_metric("plane_0", 3, "ref.png")
         self.assertIn("plane_0", m.name)
 
-    def test_metric_evaluation_tag(self):
+    def test_metric_evaluation_tag(self) -> None:
         """evaluation tag is 'Detected ROIs'."""
         m = qc.build_detected_rois_metric("plane_0", 3, "ref.png")
         self.assertEqual(m.tags["evaluation"], "Detected ROIs")
 
-    def test_metric_reference_set(self):
+    def test_metric_reference_set(self) -> None:
         """reference path is stored on the metric."""
         m = qc.build_detected_rois_metric("plane_0", 2, "some/path.png")
         self.assertEqual(m.reference, "some/path.png")
 
-    def test_initial_status_is_pass(self):
+    def test_initial_status_is_pass(self) -> None:
         """Initial status_history entry is PASS (extraction ran ok)."""
         m = qc.build_detected_rois_metric("plane_0", 2, "ref.png")
         self.assertEqual(m.status_history[0].status, Status.PASS)
         self.assertEqual(m.status_history[0].evaluator, "Automated")
 
-    def test_checkbox_options_count(self):
+    def test_checkbox_options_count(self) -> None:
         """Options = 'Missing ROIs' + one per ROI."""
         m = qc.build_detected_rois_metric("plane_0", 5, "ref.png")
-        # 1 'Missing ROIs' + 5 'ROI {i} invalid'
         self.assertEqual(len(m.value.options), 6)
         self.assertEqual(m.value.options[0], "Missing ROIs")
         self.assertEqual(m.value.options[1], "ROI 0 invalid")
         self.assertEqual(m.value.options[5], "ROI 4 invalid")
 
-    def test_checkbox_statuses_all_fail(self):
+    def test_checkbox_statuses_all_fail(self) -> None:
         """All checkbox statuses are FAIL (reviewer marks failures)."""
         m = qc.build_detected_rois_metric("plane_0", 3, "ref.png")
         self.assertTrue(all(s == Status.FAIL for s in m.value.status))
 
-    def test_zero_rois(self):
+    def test_zero_rois(self) -> None:
         """Zero ROIs produces a metric with only 'Missing ROIs' option."""
         m = qc.build_detected_rois_metric("plane_0", 0, "ref.png")
         self.assertEqual(len(m.value.options), 1)
@@ -57,7 +56,7 @@ class TestDetectedROIsMetric(unittest.TestCase):
 class TestQualityControlCollector(unittest.TestCase):
     """build_quality_control + write round-trip."""
 
-    def test_build_and_write(self):
+    def test_build_and_write(self) -> None:
         """Metrics collect into a QualityControl that re-validates."""
         d = Path(tempfile.mkdtemp())
         metrics = [qc.build_detected_rois_metric("plane_0", 4, "roi.png")]

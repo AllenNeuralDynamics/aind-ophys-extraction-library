@@ -2,7 +2,8 @@
 
 Covers data handling (virtual datasets, memory maps), ROI analysis
 (contours, centre-of-mass), trace processing (neuropil correction),
-CaImAn CNMF helpers, and visualisation (summary images, contour video).
+CaImAn CNMF helpers, visualisation (summary images, contour video), and
+the Suite2p run plus the output HDF5 writer that ``job.py`` calls.
 
 Imports heavy deps (caiman, suite2p, cellpose, h5py, sparse, cv2, …) at
 module level; this module is omitted from coverage because it requires a
@@ -28,7 +29,7 @@ import suite2p
 from aind_ophys_utils.array_utils import downsample_array
 from aind_ophys_utils.segmentation_utils import roi_probabilities
 from aind_ophys_utils.summary_images import mean_image
-from aind_pophys_metadata.paths import find_one
+from aind_pophys_metadata import find_one
 from caiman.source_extraction.cnmf import cnmf, params
 from cellpose.models import Cellpose
 from scipy.sparse import coo_matrix, hstack, linalg
@@ -118,7 +119,7 @@ def bergamo_segmentation(
         Path to the motion-corrected HDF5 file.
     valid_epoch_stems : sequence of str
         TIFF stems of the stimulus epochs to keep, in acquisition order
-        (see ``utils.metadata_utils.get_valid_epoch_stems``).
+        (see ``utils.metadata_utils.valid_epoch_stems``).
     temp_dir : Path
         Directory for the temporary virtual dataset.
 
@@ -876,8 +877,7 @@ def run_suite2p_extraction(
     """Run Suite2p ROI detection and return raw outputs.
 
     Handles the ``init`` modes that use Suite2p (all modes except
-    ``greedy_roi``/``corr_pnr``).  Returns a result dict consumed by
-    :func:`job.run`.
+    ``greedy_roi``/``corr_pnr``). The result dict is consumed by ``job.py``.
 
     Parameters
     ----------
@@ -897,7 +897,8 @@ def run_suite2p_extraction(
     dict
         Keys: ``traces_corrected``, ``traces_neuropil``, ``traces_roi``,
         ``data``, ``coords``, ``neuropil_coords``, ``iscell``,
-        ``input_args``, ``nframes``, ``keys``.
+        ``input_args``, ``nframes``, ``keys``, ``dims``, and - unless
+        Suite2p detected nothing - ``stat``, ``r_values`` and ``raw_r``.
     """
     suite2p_args = suite2p.default_ops()
     suite2p_args["diameter"] = args.diameter

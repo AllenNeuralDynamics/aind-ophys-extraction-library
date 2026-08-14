@@ -5,17 +5,107 @@
 [![semantic-release: angular](https://img.shields.io/badge/semantic--release-angular-e10079?logo=semantic-release)](https://github.com/semantic-release/semantic-release)
 ![Interrogate](https://img.shields.io/badge/interrogate-100.0%25-brightgreen)
 ![Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen)
-![Python](https://img.shields.io/badge/python->=3.10-blue?logo=python)
+![Python](https://img.shields.io/badge/python-3.10-blue?logo=python)
+
+ROI detection and trace extraction for AIND planar/population ophys movies. This
+is the backing library for the `aind-ophys-extraction` capsule: all logic lives
+here, and the capsule is a thin wrapper that calls `job.run()`.
+
+Detection runs through Cellpose, Suite2p and CaImAn. One invocation processes one
+plane: it reads the asset metadata, locates the input movie, detects ROIs,
+extracts and neuropil-corrects the traces, and writes the output HDF5 plus
+`processing.json` and `quality_control.json` for that plane.
 
 ## Usage
- - To use this template, click the green `Use this template` button and `Create new repository`.
- - After github initially creates the new repository, please wait an extra minute for the initialization scripts to finish organizing the repo.
- - To enable the automatic semantic version increments: in the repository go to `Settings` and `Collaborators and teams`. Click the green `Add people` button. Add `svc-aindscicomp` as a collaborator with "write" role. Modify the file in `.github/workflows/tag_and_publish.yml` by removing the if statement in line 67. The semantic version will now be incremented every time a code is committed into the main branch.
- - To publish to PyPI, first submit a request to the [Scientific Computing issue tracker](https://github.com/AllenNeuralDynamics/aind-scientific-computing/issues)
- to have the repository added as a Trusted Publisher for PyPI. Please specify the repository name (and desired PyPI package name if different).
- After the repository is added as a Trusted Publisher, enable semantic versioning and remove the if statement in line 73 in `.github/workflows/tag_and_publish.yml`. The code will now be published to PyPI every time the code is committed into the main branch.
- - The `.github/workflows/test_and_lint.yml` file will run automated tests and style checks every time a Pull Request is opened. If the checks are undesired, the `test_and_lint.yml` can be deleted. The strictness of the code coverage level, etc., can be modified by altering the configurations in the `pyproject.toml` file and the `.flake8` file.
- - Please make any necessary updates to the README.md and CITATION.cff files
+
+```python
+from aind_ophys_extraction_library.job import run
+
+run()  # settings parsed from CLI/environment
+```
+
+Settings can also be constructed explicitly:
+
+```python
+from aind_ophys_extraction_library.job import run
+from aind_ophys_extraction_library.settings import ExtractionSettings
+
+run(ExtractionSettings(init="mean", neuropil="mutualinfo"))
+```
+
+### Outputs
+
+Written under `<output_dir>/<plane_id>/extraction/`:
+
+- `<plane_id>_extraction.h5` - traces (`traces/corrected`, `traces/neuropil`,
+  `traces/roi`), sparse ROI masks, `iscell`, summary images, and the Cellpose
+  output when Suite2p produced one.
+- `<plane_id>_detected_ROIs.png` and `<plane_id>_detected_ROIs_withIDs.png`.
+- `<plane_id>_ROI_contours_overlay.webm` when `contour_video` is set.
+- `processing.json` and `quality_control.json`.
+
+## Modules
+
+### `settings.py`
+
+`ExtractionSettings`, a `pydantic-settings` model parsed from CLI arguments and
+`EXTRACTION_`-prefixed environment variables. Import-light on purpose (pydantic
+plus stdlib only), so the Code Ocean app panel generator can read it without the
+segmentation stack. Validators lowercase `init`/`neuropil`, map `rf=0` to `None`
+(full-FOV CaImAn), and reject inconsistent `init`/`neuropil` combinations.
+
+`init` selects the detection mode:
+
+| `init` | Detection |
+|---|---|
+| `max/mean`, `mean`, `enhanced_mean`, `max` | Cellpose on the named summary image, via Suite2p's anatomical detection |
+| `sourcery`, `sparsery` | Suite2p functional detection (with `sparse_mode` for `sparsery`) |
+| `greedy_roi`, `corr_pnr` | CaImAn functional initialization |
+
+`neuropil` selects trace correction: `mutualinfo` (r minimizing mutual
+information), `suite2p` (fixed r), or `cnmf`/`cnmf-e` (CaImAn demixing, required
+for the CaImAn `init` modes).
+
+Suite2p defaults can be overridden with `suite2p_ops` (an `ops.npy` path) and
+`suite2p_params` (a JSON string, applied second so it wins). Pipeline-controlled
+keys are stripped from both, and dropped keys are logged.
+
+### `job.py`
+
+`run()`, the entry point. Reads metadata, configures logging, skips the plane if
+a prior run's output is mounted next to the input, then runs detection and writes
+every output inside the shared `stage_guard`, so a failed run still leaves a
+`processing.json` with the error in `notes`.
+
+### `extraction.py`
+
+The computation. `run_suite2p_extraction()` and `run_caiman_extraction()` are the
+two detection paths; `bergamo_segmentation()` builds the virtual dataset that
+drops photostimulation frames; `get_FC_from_r()` does the mutual-information
+neuropil correction; `save_summary_images_with_rois()` and `contour_video()`
+produce the diagnostics; `write_extraction_h5()` writes the output file. Imports
+the heavy dependencies at module level and is omitted from coverage, since
+exercising it needs the full CO environment.
+
+### `qc.py`
+
+`build_detected_rois_metric()` builds the reviewer-facing detected-ROIs
+checkbox metric; `build_quality_control()` and `write_quality_control_json()`
+delegate to `aind-pophys-metadata` so the document shape stays fleet-wide.
+
+### `utils/metadata_utils.py`
+
+The metadata layer over `aind-pophys-metadata`.
+`load_extraction_metadata()` dispatches on which core file is present
+(`acquisition.json` for schema v2, `session.json` for v1) and returns the
+`ExtractionMetadata` view this step consumes. `get_valid_epoch_stems()` resolves
+the Bergamo TIFF stems from either schema version, and `is_bergamo()` routes on
+`instrument_id`. `build_extraction_code()` builds the `Code` block,
+`build_output_parameters()` the scalar output summary, and
+`plan_cellpose_models()` / `build_cellpose_provenance()` record which Cellpose
+model files a run loaded and whether they were already local. The model
+directory is read from `CELLPOSE_LOCAL_MODELS_PATH`, which is Cellpose's own
+variable - the deployment, not this library, decides where the weights live.
 
 ## Level of Support
 Please indicate a level of support:
@@ -46,3 +136,17 @@ Alternatively, if using [uv](https://docs.astral.sh/uv/), run
 ```bash
 uv sync
 ```
+
+## Tests and linting
+
+Python 3.10 only (`requires-python = ">=3.10,<3.11"`), matching the capsule
+image. The CI gate is
+
+```bash
+flake8 .
+interrogate --verbose .
+coverage run -m unittest discover
+coverage report
+```
+
+Tests are `unittest`. Coverage and interrogate are both gated at 100%.

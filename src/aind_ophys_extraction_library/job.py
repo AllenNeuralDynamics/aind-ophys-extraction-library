@@ -1,9 +1,10 @@
 """Top-level extraction orchestration.
 
 ``run()`` is the library entry point called by the thin capsule wrapper:
-read metadata (v1 or v2) -> configure logging -> locate the registered
-movie -> run Suite2p/CaImAn -> write output HDF5 + diagnostics ->
-emit a full ``processing.json`` and ``quality_control.json``.
+read metadata (v1 or v2) -> configure logging -> locate the input movie
+(the decrosstalked one when present, else the registered one) -> run
+Suite2p/CaImAn -> write output HDF5 + diagnostics -> emit a full
+``processing.json`` and ``quality_control.json``.
 
 The shared ``stage_guard`` owns the ``processing.json`` lifecycle, so a
 failed run still leaves a document describing what was attempted, with the
@@ -19,7 +20,7 @@ import h5py
 import numpy as np
 import sparse
 from aind_ophys_utils.summary_images import max_corr_image, mean_image, max_image
-from aind_pophys_metadata.paths import find_one, relative_to_root
+from aind_pophys_metadata import find_one, relative_to_root
 from aind_pophys_metadata.processing import collect_upstream_process_names
 from aind_pophys_metadata.runner import stage_guard
 from log_schema.main import setup_logging
