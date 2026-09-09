@@ -291,7 +291,21 @@ class ExtractionSettings(BaseSettings, cli_parse_args=True):
         return v
 
     def validate_consistency(self) -> Optional[str]:
-        """Validate command line arguments for consistency."""
+        """Validate settings for consistency, adjusting where recoverable.
+
+        Returns
+        -------
+        str or None
+            A warning message when a setting was adjusted in place (``ssub``
+            forced to 1 for ``corr_pnr``/``cnmf``), else ``None``.
+
+        Raises
+        ------
+        ValueError
+            For unsupported combinations: ``cnmf-e`` neuropil with
+            ``greedy_roi`` init, or a Suite2p neuropil model with a
+            ``greedy_roi``/``corr_pnr`` init.
+        """
         if self.neuropil == "cnmf" and self.init == "corr_pnr":
             self.ssub = 1
             return (

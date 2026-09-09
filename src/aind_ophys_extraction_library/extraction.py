@@ -15,7 +15,7 @@ import logging
 import os
 from multiprocessing.pool import Pool, ThreadPool
 from pathlib import Path
-from typing import Any, Optional, Sequence, Tuple, Union
+from typing import Optional, Sequence, Tuple, Union
 
 import caiman
 import cv2
@@ -374,8 +374,8 @@ def get_r_from_min_mi(
     raw_trace: np.ndarray,
     neuropil_trace: np.ndarray,
     resolution: float = 0.01,
-    r_test_range: list = [0, 2],
-) -> tuple:
+    r_test_range: list[float] = [0, 2],
+) -> tuple[float, np.ndarray, np.ndarray]:
     """Find the neuropil coefficient r that minimises mutual information.
 
     Parameters
@@ -410,7 +410,7 @@ def get_r_from_min_mi(
 
 def get_FC_from_r(
     raw_trace: np.ndarray, neuropil_trace: np.ndarray, min_r_count: int = 5
-) -> tuple:
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Compute neuropil-corrected traces using per-ROI optimal r values.
 
     Parameters
@@ -578,7 +578,7 @@ def run_caiman_extraction(
 
 
 def format_caiman_output(
-    e: Any,
+    e: caiman.source_extraction.cnmf.estimates.Estimates,
     cnmfe: bool,
     Yr: np.ndarray,
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
@@ -899,6 +899,13 @@ def run_suite2p_extraction(
         ``data``, ``coords``, ``neuropil_coords``, ``iscell``,
         ``input_args``, ``nframes``, ``keys``, ``dims``, and - unless
         Suite2p detected nothing - ``stat``, ``r_values`` and ``raw_r``.
+
+    Raises
+    ------
+    ValueError
+        If ``suite2p_ops`` names a missing file or one that does not contain a
+        dict, or if ``suite2p_params`` is not valid JSON or is not a JSON
+        object.
     """
     suite2p_args = suite2p.default_ops()
     suite2p_args["diameter"] = args.diameter
