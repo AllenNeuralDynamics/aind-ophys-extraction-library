@@ -358,7 +358,7 @@ class TestCodeIdentity(unittest.TestCase):
 
     @patch.dict(os.environ, {"VERSION": "1.4.0"}, clear=True)
     def test_wrapper_version_is_ignored(self) -> None:
-        """The backing library is authoritative, not the capsule wrapper."""
+        """The backing library is authoritative, not the runtime wrapper."""
         code = mu.build_extraction_code({"a": 1})
         self.assertNotEqual(code.version, "1.4.0")
         self.assertEqual(code.version, version(mu.LIBRARY_NAME))
@@ -480,7 +480,7 @@ class TestOutputParameters(unittest.TestCase):
 
 
 class TestStageDocument(unittest.TestCase):
-    """The document the shared stage guard writes for this capsule."""
+    """The document the shared stage guard writes for this step."""
 
     @patch.dict(os.environ, _PIPELINE_ENV, clear=True)
     def test_processing_json_round_trips_with_dependency_graph(self) -> None:
@@ -527,7 +527,7 @@ class TestStageDocument(unittest.TestCase):
 
 
 class TestUpstreamCollection(unittest.TestCase):
-    """Sibling upstream discovery, excluding this capsule's own document."""
+    """Sibling upstream discovery, excluding this step's own document."""
 
     @patch.dict(os.environ, _PIPELINE_ENV, clear=True)
     def test_own_document_excluded(self) -> None:

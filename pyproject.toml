@@ -42,7 +42,7 @@ dependencies = [
     "aind-qcportal-schema==0.6.4",
     "aind-ophys-utils==0.2.0",
     "log-schema[cloudwatch] @ git+https://github.com/AllenNeuralDynamics/aind-log-utils.git@f09685e#subdirectory=python",
-    "aind-pophys-metadata @ git+https://github.com/AllenNeuralDynamics/aind-pophys-metadata.git@3a528fd",
+    "aind-pophys-metadata @ git+https://github.com/AllenNeuralDynamics/aind-pophys-metadata.git@v0.2.0",
     "pydantic==2.8.2",
     "pydantic-settings==2.14.2",
     "pytz",
@@ -105,7 +105,11 @@ exclude = '''
 '''
 
 [tool.coverage.run]
-omit = ["*__init__*", "*/extraction.py", "*/job.py"]
+omit = [
+    "*__init__*",
+    "*/aind_ophys_extraction_library/extraction.py",
+    "*/aind_ophys_extraction_library/job.py",
+]
 source = ["aind_ophys_extraction_library", "tests"]
 
 [tool.coverage.report]

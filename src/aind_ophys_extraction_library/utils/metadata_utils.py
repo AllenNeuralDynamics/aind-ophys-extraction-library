@@ -1,6 +1,6 @@
 """Acquisition metadata reads for ophys extraction.
 
-A thin, capsule-specific layer over the shared ``aind_pophys_metadata``
+A thin, extraction-specific layer over the shared ``aind_pophys_metadata``
 library. Every schema-version difference is resolved by
 :class:`~aind_pophys_metadata.core.CoreMetadata`, which reads one located
 document regardless of the schema it is written in; this module assembles the
@@ -50,7 +50,7 @@ PHOTOSTIM_STIMULUS_NAME = "2p photostimulation"
 
 #: Environment variable cellpose itself reads to locate its model files
 #: (``cellpose.models.MODEL_DIR``). A cellpose convention, not a Code Ocean
-#: one: the capsule wrapper decides which directory it points at, and this
+#: one: the runtime wrapper decides which directory it points at, and this
 #: library only reports whatever the loader used.
 CELLPOSE_MODELS_PATH_ENV = "CELLPOSE_LOCAL_MODELS_PATH"
 
@@ -95,7 +95,7 @@ def is_bergamo(instrument_id: Optional[str]) -> bool:
 
 @dataclass(frozen=True)
 class ExtractionMetadata:
-    """Minimal metadata the extraction capsule consumes.
+    """Minimal metadata the extraction step consumes.
 
     ``frame_rate`` drives Suite2p temporal binning and is validated at load
     time, so a rate-less asset fails with a message naming the file rather
@@ -174,7 +174,7 @@ def load_extraction_metadata(
     Returns
     -------
     ExtractionMetadata
-        The minimal fields this capsule consumes.
+        The minimal fields this step consumes.
 
     Raises
     ------
@@ -201,7 +201,7 @@ def load_extraction_metadata(
 
 
 def process_name(plane_id: str) -> str:
-    """Return the ``DataProcess.name`` this capsule emits for a plane.
+    """Return the ``DataProcess.name`` this step emits for a plane.
 
     Mirrors the composition
     :func:`aind_pophys_metadata.processing.build_data_process` performs, so
@@ -313,7 +313,7 @@ def plan_cellpose_models(
         if os.sep in pretrained_model or Path(pretrained_model).exists():
             logger.warning(
                 "pretrained_model %r is a custom model file, whose provenance "
-                "this capsule cannot name; omitting cellpose provenance.",
+                "this library cannot name; omitting cellpose provenance.",
                 pretrained_model,
             )
             return None

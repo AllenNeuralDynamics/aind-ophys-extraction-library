@@ -1,6 +1,6 @@
 """Top-level extraction orchestration.
 
-``run()`` is the library entry point called by the thin capsule wrapper:
+``run()`` is the library entry point called by the thin runtime wrapper:
 read metadata (v1 or v2) -> configure logging -> locate the input movie
 (the decrosstalked one when present, else the registered one) -> run
 Suite2p/CaImAn -> write output HDF5 + diagnostics -> emit a full
@@ -44,19 +44,6 @@ PROCESS_NAME = "aind-ophys-extraction"
 
 #: A prior run's output mounted alongside the input marks this plane done.
 EXISTING_OUTPUT_DIR = "output"
-
-
-def _verify_outputs(output_dir: Path) -> None:
-    """Round-trip the emitted metadata through the core v2 schema objects."""
-    from aind_data_schema.core.processing import Processing
-    from aind_data_schema.core.quality_control import QualityControl
-
-    Processing.model_validate_json(
-        (Path(output_dir) / "processing.json").read_text()
-    )
-    QualityControl.model_validate_json(
-        (Path(output_dir) / "quality_control.json").read_text()
-    )
 
 
 def _locate_input_movie(input_dir: Path) -> Path:
@@ -273,9 +260,7 @@ def run(settings: Optional[ExtractionSettings] = None) -> None:
     Parameters
     ----------
     settings : ExtractionSettings, optional
-        Parsed settings; constructed from CLI/env when omitted. When
-        ``settings.verify`` is True, the emitted metadata is round-tripped
-        through the core v2 schema objects after writing.
+        Parsed settings; constructed from CLI/env when omitted.
     """
     settings = settings or ExtractionSettings()
     input_dir = settings.input_dir.resolve()
@@ -340,6 +325,3 @@ def run(settings: Optional[ExtractionSettings] = None) -> None:
                 ctx.parameters[mu.CELLPOSE_MODELS_PARAMETER] = (
                     mu.build_cellpose_provenance(model_plan)
                 )
-
-    if settings.verify:
-        _verify_outputs(output_dir)
