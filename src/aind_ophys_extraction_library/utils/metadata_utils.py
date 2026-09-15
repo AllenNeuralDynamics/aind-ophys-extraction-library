@@ -4,9 +4,8 @@ A thin, extraction-specific layer over the shared ``aind_pophys_metadata``
 library. Every schema-version difference is resolved by
 :class:`~aind_pophys_metadata.core.CoreMetadata`, which reads one located
 document regardless of the schema it is written in; this module assembles the
-extraction ``ExtractionMetadata`` view, the extraction ``Code`` block, the
-cellpose model provenance recorded in ``Code.parameters``, and the output
-summary written to ``DataProcess.output_parameters``.
+extraction ``ExtractionMetadata`` view, the extraction ``Code`` block, and the
+output summary written to ``DataProcess.output_parameters``.
 """
 
 import logging
