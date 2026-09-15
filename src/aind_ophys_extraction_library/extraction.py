@@ -34,7 +34,7 @@ from caiman.source_extraction.cnmf import cnmf, params
 from cellpose.models import Cellpose
 from scipy.sparse import coo_matrix, hstack, linalg
 
-from .settings import ExtractionSettings
+from .settings import ANATOMICAL_INIT_MODES, ExtractionSettings
 
 logger = logging.getLogger(
     "Source extraction using a combination of Cellpose, Suite2p, and CaImAn"
@@ -919,10 +919,7 @@ def run_suite2p_extraction(
             f"as {suite2p_args['diameter']:.0f}."
         )
     suite2p_args["anatomical_only"] = {
-        "max/mean": 1,
-        "mean": 2,
-        "enhanced_mean": 3,
-        "max": 4,
+        mode: index for index, mode in enumerate(ANATOMICAL_INIT_MODES, start=1)
     }.get(args.init, 0)
     suite2p_args["cellprob_threshold"] = args.cellprob_threshold
     suite2p_args["flow_threshold"] = args.flow_threshold

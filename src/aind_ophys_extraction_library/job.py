@@ -35,7 +35,7 @@ from .extraction import (
     contour_video,
     write_extraction_h5,
 )
-from .settings import ExtractionSettings
+from .settings import CAIMAN_INIT_MODES, ExtractionSettings
 from .utils import metadata_utils as mu
 
 logger = logging.getLogger("Ophys extraction")
@@ -64,7 +64,7 @@ def _run_detection(
     """Run the CaImAn-only or Suite2p detection path and return its result."""
     n_jobs = None if (tmp := os.environ.get("CO_CPUS")) is None else int(tmp)
 
-    if settings.init not in ("greedy_roi", "corr_pnr"):
+    if settings.init not in CAIMAN_INIT_MODES:
         return run_suite2p_extraction(
             motion_corrected_fn=motion_corrected_fn,
             input_fn=input_fn,

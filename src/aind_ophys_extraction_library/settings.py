@@ -11,6 +11,14 @@ from typing import Any, Optional
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+#: ``init`` modes routed to Suite2p's anatomical Cellpose detection (a summary
+#: image segmented with ``pretrained_model``). Ordered so the 1-based position
+#: is Suite2p's ``anatomical_only`` value.
+ANATOMICAL_INIT_MODES = ("max/mean", "mean", "enhanced_mean", "max")
+
+#: ``init`` modes routed to CaImAn instead of Suite2p.
+CAIMAN_INIT_MODES = ("greedy_roi", "corr_pnr")
+
 
 class ExtractionSettings(BaseSettings, cli_parse_args=True):
     """Settings for extraction pipeline using pydantic-settings."""
@@ -309,14 +317,14 @@ class ExtractionSettings(BaseSettings, cli_parse_args=True):
                 "Can't use neuropil model 'cnmf-e' with 'greedy_roi' initialization"
             )
 
-        if self.init in ("greedy_roi", "corr_pnr") and self.neuropil[:4] != "cnmf":
+        if self.init in CAIMAN_INIT_MODES and self.neuropil[:4] != "cnmf":
             raise ValueError(
                 "Can't use Suite2p neuropil model with 'greedy_roi' or 'corr_pnr' initialization"
             )
 
         # For backward compatibility
         if self.init in ("1", "2", "3", "4"):
-            self.init = ("max/mean", "mean", "enhanced_mean", "max")[int(self.init) - 1]
+            self.init = ANATOMICAL_INIT_MODES[int(self.init) - 1]
 
         return None
 

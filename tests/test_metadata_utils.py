@@ -605,6 +605,14 @@ class TestCellposeModelFiles(unittest.TestCase):
             mu.cellpose_model_files("cyto3"), ("cyto3", "size_cyto3.npy")
         )
 
+    def test_pinned_cellpose_version(self) -> None:
+        """The basenames above are verified against this pinned cellpose;
+        bumping the pin must re-check ``cellpose.models.model_path`` /
+        ``size_model_path``, whose naming this function mirrors.
+        """
+        pyproject = Path(__file__).resolve().parents[1] / "pyproject.toml"
+        self.assertIn('"cellpose==3.0.10"', pyproject.read_text())
+
 
 class TestCellposeModelsDir(unittest.TestCase):
     """The model directory comes from the environment, never a literal."""

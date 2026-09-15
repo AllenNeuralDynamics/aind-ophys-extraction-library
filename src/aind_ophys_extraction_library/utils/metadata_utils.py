@@ -24,6 +24,8 @@ from aind_pophys_metadata import (
     model_provenance,
 )
 
+from ..settings import ANATOMICAL_INIT_MODES, CAIMAN_INIT_MODES
+
 logger = logging.getLogger("Ophys extraction")
 
 #: Distribution name of this backing library. The shared builder derives
@@ -59,13 +61,10 @@ CELLPOSE_DEFAULT_MODELS_DIR = Path.home() / ".cellpose" / "models"
 #: ``Code.parameters`` key holding the cellpose model provenance records.
 CELLPOSE_MODELS_PARAMETER = "cellpose_models"
 
-#: ``init`` modes that pass a summary image to Suite2p's anatomical detection,
-#: which segments it with ``pretrained_model``.
-ANATOMICAL_INIT_MODES = ("max/mean", "mean", "enhanced_mean", "max")
-
 #: ``init`` modes that estimate the cell diameter from a bare ``Cellpose()``
-#: when ``diameter == 0`` and otherwise never load a model.
-AUTO_DIAMETER_INIT_MODES = ("sourcery", "greedy_roi", "corr_pnr")
+#: when ``diameter == 0`` and otherwise never load a model: Suite2p's
+#: ``sourcery`` plus the CaImAn modes.
+AUTO_DIAMETER_INIT_MODES = ("sourcery",) + CAIMAN_INIT_MODES
 
 #: Model a bare ``Cellpose()`` resolves in cellpose 3.x.
 AUTO_DIAMETER_MODEL = "cyto3"
