@@ -33,24 +33,20 @@ class TestDetectedROIsMetric(unittest.TestCase):
         self.assertEqual(m.status_history[0].status, Status.PASS)
         self.assertEqual(m.status_history[0].evaluator, "Automated")
 
-    def test_checkbox_options_count(self) -> None:
-        """Options = 'Missing ROIs' + one per ROI."""
-        m = qc.build_detected_rois_metric("plane_0", 5, "ref.png")
-        self.assertEqual(len(m.value.options), 6)
-        self.assertEqual(m.value.options[0], "Missing ROIs")
-        self.assertEqual(m.value.options[1], "ROI 0 invalid")
-        self.assertEqual(m.value.options[5], "ROI 4 invalid")
-
-    def test_checkbox_statuses_all_fail(self) -> None:
-        """All checkbox statuses are FAIL (reviewer marks failures)."""
+    def test_curation_type(self) -> None:
+        """type carries the curation vocabulary label."""
         m = qc.build_detected_rois_metric("plane_0", 3, "ref.png")
-        self.assertTrue(all(s == Status.FAIL for s in m.value.status))
+        self.assertEqual(m.type, qc.CURATION_TYPE)
+
+    def test_value_is_per_roi_ids(self) -> None:
+        """value is one id per detected ROI, in ROI order."""
+        m = qc.build_detected_rois_metric("plane_0", 5, "ref.png")
+        self.assertEqual(m.value, ["0", "1", "2", "3", "4"])
 
     def test_zero_rois(self) -> None:
-        """Zero ROIs produces a metric with only 'Missing ROIs' option."""
+        """Zero ROIs produces a curation metric with an empty value list."""
         m = qc.build_detected_rois_metric("plane_0", 0, "ref.png")
-        self.assertEqual(len(m.value.options), 1)
-        self.assertEqual(m.value.options[0], "Missing ROIs")
+        self.assertEqual(m.value, [])
 
 
 class TestQualityControlCollector(unittest.TestCase):

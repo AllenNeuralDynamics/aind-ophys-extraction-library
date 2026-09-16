@@ -3,9 +3,17 @@
 Capsule-specific metric content over the shared ``aind_pophys_metadata``
 QC builders. The ``QualityControl`` wrapper with the project-standard
 ``default_grouping`` and the writer both live in the shared library. This
-module owns the extraction-specific ``CheckboxMetric`` for detected ROIs.
+module owns the extraction-specific detected-ROIs curation metric.
 ``job.py`` collects the metrics and emits ONE full ``quality_control.json``
 per plane (never per-metric files).
+
+The detected-ROIs payload is the **core**
+``aind_data_schema.core.quality_control.CurationMetric``, matching the
+sibling libraries (dff, oasis, classifier): v2 removed ``QCEvaluation`` and
+qcportal no longer exports a ``CurationMetric``. The core class requires
+``type`` and a list ``value``, and an empty ``status_history`` makes
+``QualityControl`` raise ``IndexError`` while deriving its status, so one
+status is seeded.
 """
 
 from datetime import datetime as dt
@@ -14,6 +22,7 @@ from typing import List
 
 import pytz
 from aind_data_schema.core.quality_control import (
+    CurationMetric,
     QCMetric,
     QCStatus,
     QualityControl,
@@ -22,46 +31,53 @@ from aind_data_schema.core.quality_control import (
 )
 from aind_data_schema_models.modalities import Modality
 from aind_pophys_metadata import quality_control as shared_qc
-from aind_qcportal_schema.metric_value import CheckboxMetric
 
 _SEATTLE_TZ = pytz.timezone("America/Los_Angeles")
+
+EVALUATION = "Detected ROIs"
+METRIC_TYPE = "Operational QC"
+CURATION_TYPE = "Detected ROI validity"
 
 
 def build_detected_rois_metric(
     unique_id: str,
     num_rois: int,
     reference: str,
-) -> QCMetric:
-    """Construct the detected-ROIs CheckboxMetric.
+) -> CurationMetric:
+    """Construct the detected-ROIs curation metric.
 
-    The metric status history is seeded as PASS by "Automated" (extraction ran
-    successfully). Reviewers mark individual checkboxes (``"Missing ROIs"``,
-    ``"ROI {i} invalid"``) to flag failures; the overall status then becomes FAIL.
+    Seeded PASS by ``"Automated"`` (extraction ran and produced ROIs). The
+    ``value`` is one entry per detected ROI, indexed by ROI id in suite2p
+    order; a reviewer curates out the ids whose mask is invalid against the
+    referenced summary image.
 
     Parameters
     ----------
     unique_id : str
         Plane/FOV identifier used in the metric name.
     num_rois : int
-        Number of ROIs detected; one checkbox option is created per ROI.
+        Number of ROIs detected; one ``value`` entry is created per ROI.
     reference : str
         Path to the ROI summary image with IDs, relative to the asset root.
 
     Returns
     -------
-    QCMetric
-        The detected-ROIs checkbox metric.
+    CurationMetric
+        The detected-ROIs curation metric.
     """
-    options = ["Missing ROIs"] + [f"ROI {i} invalid" for i in range(num_rois)]
-    statuses = [Status.FAIL] * len(options)
-
-    return QCMetric(
+    return CurationMetric(
         name=f"{unique_id} Detected ROIs",
         modality=Modality.POPHYS,
         stage=Stage.PROCESSING,
-        tags={"evaluation": "Detected ROIs", "type": "Operational QC"},
-        description="",
+        type=CURATION_TYPE,
+        value=[str(roi_id) for roi_id in range(num_rois)],
+        description=(
+            "Detected ROI ids, indexed in suite2p order. Review each ROI "
+            "against the summary image and curate out any whose mask is "
+            "invalid."
+        ),
         reference=reference,
+        tags={"evaluation": EVALUATION, "type": METRIC_TYPE},
         status_history=[
             QCStatus(
                 evaluator="Automated",
@@ -69,7 +85,6 @@ def build_detected_rois_metric(
                 timestamp=dt.now(_SEATTLE_TZ).isoformat(),
             )
         ],
-        value=CheckboxMetric(value=[], options=options, status=statuses),
     )
 
 
