@@ -6,9 +6,7 @@ live there). ``job.py`` collects the metrics and emits ONE
 ``quality_control.json`` per plane.
 
 The detected-ROIs payload is the core
-``aind_data_schema.core.quality_control.CurationMetric`` (a per-ROI list),
-matching the dff/oasis/classifier siblings. Its ``status_history`` is seeded
-non-empty because ``QualityControl`` derives its status from it.
+``aind_data_schema.core.quality_control.CurationMetric`` (a per-ROI list).
 """
 
 from datetime import datetime as dt
