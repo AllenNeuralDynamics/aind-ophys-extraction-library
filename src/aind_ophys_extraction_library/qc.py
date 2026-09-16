@@ -1,19 +1,14 @@
 """quality_control.json generation for ophys extraction.
 
-Capsule-specific metric content over the shared ``aind_pophys_metadata``
-QC builders. The ``QualityControl`` wrapper with the project-standard
-``default_grouping`` and the writer both live in the shared library. This
-module owns the extraction-specific detected-ROIs curation metric.
-``job.py`` collects the metrics and emits ONE full ``quality_control.json``
-per plane (never per-metric files).
+Extraction-specific metric content over the shared ``aind_pophys_metadata``
+QC builders (the ``QualityControl`` wrapper, ``default_grouping`` and writer
+live there). ``job.py`` collects the metrics and emits ONE
+``quality_control.json`` per plane.
 
-The detected-ROIs payload is the **core**
-``aind_data_schema.core.quality_control.CurationMetric``, matching the
-sibling libraries (dff, oasis, classifier): v2 removed ``QCEvaluation`` and
-qcportal no longer exports a ``CurationMetric``. The core class requires
-``type`` and a list ``value``, and an empty ``status_history`` makes
-``QualityControl`` raise ``IndexError`` while deriving its status, so one
-status is seeded.
+The detected-ROIs payload is the core
+``aind_data_schema.core.quality_control.CurationMetric`` (a per-ROI list),
+matching the dff/oasis/classifier siblings. Its ``status_history`` is seeded
+non-empty because ``QualityControl`` derives its status from it.
 """
 
 from datetime import datetime as dt
