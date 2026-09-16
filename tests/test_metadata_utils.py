@@ -312,7 +312,7 @@ class TestValidEpochStems(unittest.TestCase):
         self.assertEqual(mu.valid_epoch_stems(core), ("spont2", "spont"))
 
     def test_stems_from_real_fixture(self) -> None:
-        """The real upgraded Bergamo acquisition yields its five stems."""
+        """The real upgraded Bergamo acquisition yields its four stems."""
         core = self._core(
             "acquisition.json", _fixture("acquisition_bergamo_v2")
         )

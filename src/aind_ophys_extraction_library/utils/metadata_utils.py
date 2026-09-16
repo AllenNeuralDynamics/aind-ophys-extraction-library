@@ -115,8 +115,8 @@ def valid_epoch_stems(core: CoreMetadata) -> Tuple[str, ...]:
 
     Photostimulation epochs are excluded: their frames are not part of the
     movie extraction runs on. The filter matches on the stimulus name, which
-    is what production has always keyed on; the epoch's ``modalities`` is the
-    same epoch's second signal but is deliberately not the criterion here.
+    is what production has always keyed on; the epoch's ``stimulus_modalities``
+    is the same epoch's second signal but is deliberately not the criterion here.
 
     Order is exactly the order the acquisition metadata records, which is not
     chronological in real assets. It must not be sorted: each stem is paired
@@ -381,7 +381,7 @@ def build_extraction_code(
     Parameters
     ----------
     parameters : dict
-        Capsule configuration parameters (from ``ExtractionSettings``). This
+        Configuration parameters (from ``ExtractionSettings``). This
         is the record of what the step was *asked* to do; output statistics
         belong in ``output_parameters`` instead.
     input_data : list of str, optional
