@@ -309,10 +309,8 @@ def run(settings: Optional[ExtractionSettings] = None) -> None:
         ctx.upstream_names = collect_upstream_process_names(
             input_dir, exclude=mu.process_name(unique_id)
         )
-        # Which cellpose files this run will load, and which of them are
-        # already local, is only observable before detection starts; their
-        # digests only exist afterwards. Recorded in a finally so a failed
-        # run still names the model bytes it got as far as loading.
+        # Plan before detection (local-vs-network is only visible then); write
+        # in the finally so a failed run still records what it loaded.
         model_plan = mu.plan_cellpose_models(
             settings.init, settings.diameter, settings.pretrained_model
         )
