@@ -4,9 +4,13 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "aind-ophys-extraction-library"
-description = "Generated from aind-library-template"
+description = "ROI detection and trace extraction for AIND ophys movies"
 license = "MIT"
-requires-python = ">=3.10"
+# Capped at <3.11 because suite2p gives a frozen dataclass an ndarray default,
+# which dataclasses reject from 3.11 on ("mutable default ... use
+# default_factory"). The capsule image is python3.10.12, so the cap matches
+# what actually runs. Same constraint as aind-ophys-decrosstalk-roi-images-library.
+requires-python = ">=3.10,<3.11"
 authors = [
     {name = "Allen Institute for Neural Dynamics"}
 ]
@@ -16,7 +20,51 @@ classifiers = [
 readme = "README.md"
 version = "0.0.0"
 
+# This library owns every dependency it imports that can be resolved from
+# PyPI, so the capsule environment is the single library pin.
+#
+# caiman is the one exception and must NOT be added. The real CaImAn (1.10.3,
+# what the image runs) is published on conda-forge only; the name `caiman` on
+# PyPI is an unrelated MicroPython build tool at 0.1.0, so declaring it would
+# silently install the wrong package rather than fail. The capsule installs it
+# with `mamba install caiman==1.10.3`, in an installer step that runs before
+# pip, and also sets CAIMAN_TEMP=/scratch.
+#
+# numpy, scipy, opencv-python, matplotlib and imageio-ffmpeg arrive as conda
+# dependencies of that caiman install. They are pinned here to the versions
+# that install resolves, so pip sees each requirement as already satisfied and
+# leaves the conda build in place. If one of these pins is ever raised, pip
+# will install over caiman's linkage - verify caiman still imports in the
+# built image before changing any of them.
 dependencies = [
+    "aind-data-schema==2.9.0",
+    "aind-data-schema-models==6.2.0",
+    "aind-ophys-utils==0.2.0",
+    "log-schema[cloudwatch] @ git+https://github.com/AllenNeuralDynamics/aind-log-utils.git@f09685e#subdirectory=python",
+    "aind-pophys-metadata @ git+https://github.com/AllenNeuralDynamics/aind-pophys-metadata.git@v0.2.0",
+    "pydantic==2.8.2",
+    "pydantic-settings==2.14.2",
+    "pytz",
+    # Segmentation stack. torch and sbxreader are pinned rather than left to
+    # cellpose/suite2p resolution: an unpinned torch is the single largest
+    # reproducibility risk in this image.
+    "cellpose==3.0.10",
+    "h5py==3.11.0",
+    "scikit-image==0.24.0",
+    "sparse==0.15.4",
+    "sbxreader==0.2.3",
+    "torch==2.4.0",
+    "suite2p @ git+https://github.com/j-friedrich/suite2p.git@save_cellpose_output",
+    # Base-image versions, matched so pip treats them as already satisfied and
+    # does not reinstall over caiman's conda linkage.
+    "numpy==1.26.4",
+    "scipy==1.14.1",
+    "matplotlib==3.10.9",
+    "imageio-ffmpeg==0.6.0",
+    # Ranged, not pinned: the image reports opencv-python 4.7.0, but PyPI has
+    # no exact 4.7.0 (only 4.7.0.68 / 4.7.0.72), so an == pin would force pip
+    # to install a different distribution over the conda build.
+    "opencv-python>=4.7,<4.8",
 ]
 
 [dependency-groups]
@@ -34,7 +82,7 @@ dev = [
 where = ["src"]
 
 [tool.black]
-line-length = 79
+line-length = 100
 target_version = ['py310']
 exclude = '''
 
@@ -56,7 +104,11 @@ exclude = '''
 '''
 
 [tool.coverage.run]
-omit = ["*__init__*"]
+omit = [
+    "*__init__*",
+    "*/aind_ophys_extraction_library/extraction.py",
+    "*/aind_ophys_extraction_library/job.py",
+]
 source = ["aind_ophys_extraction_library", "tests"]
 
 [tool.coverage.report]
@@ -69,7 +121,7 @@ exclude_lines = [
 fail_under = 100
 
 [tool.isort]
-line_length = 79
+line_length = 100
 profile = "black"
 skip = [".conda", ".venv"]
 
