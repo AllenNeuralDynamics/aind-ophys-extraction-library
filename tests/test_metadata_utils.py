@@ -563,3 +563,223 @@ class TestStageTimestamps(unittest.TestCase):
         start = doc.data_processes[0].start_date_time
         self.assertIsNotNone(start.tzinfo)
         self.assertGreaterEqual(start, before.replace(microsecond=0))
+
+
+def _write_model_files(directory: Path, *names: str) -> None:
+    """Write stand-in cellpose model files, real ``.npy`` where named so."""
+    for name in names:
+        path = directory / name
+        if name.endswith(".npy"):
+            np.save(
+                path,
+                np.array(
+                    {
+                        "diam_mean": np.float32(30.0),
+                        "A": np.zeros((256, 1), dtype=np.float32),
+                    },
+                    dtype=object,
+                ),
+                allow_pickle=True,
+            )
+        else:
+            path.write_bytes(np.arange(1024, dtype=np.uint8).tobytes())
+
+
+class TestCellposeModelFiles(unittest.TestCase):
+    """Basenames must mirror cellpose's own model-path construction."""
+
+    def test_torch_named_family(self) -> None:
+        """cyto/cyto2/nuclei carry the torch infix and an index."""
+        self.assertEqual(
+            mu.cellpose_model_files("cyto"),
+            ("cytotorch_0", "size_cytotorch_0.npy"),
+        )
+        self.assertEqual(
+            mu.cellpose_model_files("nuclei"),
+            ("nucleitorch_0", "size_nucleitorch_0.npy"),
+        )
+
+    def test_verbatim_family(self) -> None:
+        """cyto3 and friends are used verbatim."""
+        self.assertEqual(
+            mu.cellpose_model_files("cyto3"), ("cyto3", "size_cyto3.npy")
+        )
+
+    def test_pinned_cellpose_version(self) -> None:
+        """The basenames above are verified against this pinned cellpose;
+        bumping the pin must re-check ``cellpose.models.model_path`` /
+        ``size_model_path``, whose naming this function mirrors.
+        """
+        pyproject = Path(__file__).resolve().parents[1] / "pyproject.toml"
+        self.assertIn('"cellpose==3.0.10"', pyproject.read_text())
+
+
+class TestCellposeModelsDir(unittest.TestCase):
+    """The model directory comes from the environment, never a literal."""
+
+    @patch.dict(os.environ, {}, clear=True)
+    def test_falls_back_to_cellpose_cache(self) -> None:
+        """With the variable unset, cellpose's own cache directory is used."""
+        self.assertEqual(
+            mu.cellpose_models_dir(), mu.CELLPOSE_DEFAULT_MODELS_DIR
+        )
+
+    def test_environment_wins(self) -> None:
+        """The deployment's directory is honoured verbatim."""
+        with patch.dict(
+            os.environ,
+            {mu.CELLPOSE_MODELS_PATH_ENV: "/opt/models/cellpose"},
+            clear=True,
+        ):
+            self.assertEqual(
+                mu.cellpose_models_dir(), Path("/opt/models/cellpose")
+            )
+
+
+class TestCellposeModelPlan(unittest.TestCase):
+    """Which model family a given settings combination actually loads."""
+
+    def setUp(self) -> None:
+        """Point cellpose's model directory at an empty temp directory."""
+        self.models = Path(tempfile.mkdtemp())
+        patcher = patch.dict(
+            os.environ,
+            {mu.CELLPOSE_MODELS_PATH_ENV: str(self.models)},
+            clear=True,
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_anatomical_modes_use_pretrained_model(self) -> None:
+        """Every anatomical init mode resolves the cyto family by default."""
+        for init in mu.ANATOMICAL_INIT_MODES:
+            with self.subTest(init=init):
+                plan = mu.plan_cellpose_models(init, 0, "cyto")
+                self.assertEqual(plan.model_type, "cyto")
+                self.assertEqual(
+                    plan.filenames,
+                    ("cytotorch_0", "size_cytotorch_0.npy"),
+                )
+
+    def test_functional_modes_with_auto_diameter_use_cyto3(self) -> None:
+        """A zero diameter is estimated with cellpose 3.x's default model."""
+        for init in mu.AUTO_DIAMETER_INIT_MODES:
+            with self.subTest(init=init):
+                plan = mu.plan_cellpose_models(init, 0, "cyto")
+                self.assertEqual(plan.model_type, mu.AUTO_DIAMETER_MODEL)
+                self.assertEqual(
+                    plan.filenames, ("cyto3", "size_cyto3.npy")
+                )
+
+    def test_functional_modes_with_given_diameter_load_nothing(self) -> None:
+        """An operator-supplied diameter means cellpose is never called."""
+        for init in mu.AUTO_DIAMETER_INIT_MODES:
+            with self.subTest(init=init):
+                self.assertIsNone(mu.plan_cellpose_models(init, 12, "cyto"))
+
+    def test_sparsery_loads_nothing(self) -> None:
+        """sparsery is purely functional at any diameter."""
+        self.assertIsNone(mu.plan_cellpose_models("sparsery", 0, "cyto"))
+
+    def test_custom_model_path_is_omitted(self) -> None:
+        """A custom model file is not named rather than mislabelled."""
+        custom = self.models / "my_model"
+        custom.write_bytes(b"weights")
+        self.assertIsNone(
+            mu.plan_cellpose_models("mean", 0, str(custom))
+        )
+
+    def test_source_name_is_the_directory_basename(self) -> None:
+        """The label is stable and logical, not the resolved path."""
+        plan = mu.plan_cellpose_models("mean", 0, "cyto")
+        self.assertEqual(plan.source_name, self.models.name)
+        self.assertNotIn("/", plan.source_name)
+
+    def test_source_name_falls_back_to_the_model_type(self) -> None:
+        """A nameless directory still yields a non-empty label."""
+        with patch.dict(
+            os.environ, {mu.CELLPOSE_MODELS_PATH_ENV: "/"}, clear=True
+        ):
+            plan = mu.plan_cellpose_models("mean", 0, "cyto")
+        self.assertEqual(plan.source_name, "cyto")
+
+
+class TestCellposeProvenance(unittest.TestCase):
+    """Records describe the bytes loaded, and label their origin honestly."""
+
+    def setUp(self) -> None:
+        """Point cellpose's model directory at an empty temp directory."""
+        self.models = Path(tempfile.mkdtemp())
+        patcher = patch.dict(
+            os.environ,
+            {mu.CELLPOSE_MODELS_PATH_ENV: str(self.models)},
+            clear=True,
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_locally_present_files_are_labelled_as_the_asset(self) -> None:
+        """Both cyto files present up front are asset-sourced."""
+        _write_model_files(
+            self.models, "cytotorch_0", "size_cytotorch_0.npy"
+        )
+        plan = mu.plan_cellpose_models("mean", 0, "cyto")
+        records = mu.build_cellpose_provenance(plan)
+        self.assertEqual(len(records), 2)
+        for record in records:
+            self.assertEqual(record["source"], mu.MODEL_SOURCE_ASSET)
+            self.assertEqual(record["source_name"], self.models.name)
+            self.assertEqual(len(record["sha256"]), 64)
+        self.assertEqual(
+            {r["filename"] for r in records},
+            {"cytotorch_0", "size_cytotorch_0.npy"},
+        )
+
+    def test_downloaded_file_is_labelled_as_a_network_download(self) -> None:
+        """A file absent before the run and present after was downloaded."""
+        _write_model_files(self.models, "cyto3")
+        plan = mu.plan_cellpose_models("sourcery", 0, "cyto")
+        _write_model_files(self.models, "size_cyto3.npy")
+        records = mu.build_cellpose_provenance(plan)
+        by_name = {r["filename"]: r for r in records}
+        self.assertEqual(
+            by_name["cyto3"]["source"], mu.MODEL_SOURCE_ASSET
+        )
+        self.assertEqual(
+            by_name["size_cyto3.npy"]["source"], mu.MODEL_SOURCE_NETWORK
+        )
+
+    def test_missing_file_is_omitted(self) -> None:
+        """A file absent throughout is left out, not asserted."""
+        _write_model_files(self.models, "cytotorch_0")
+        plan = mu.plan_cellpose_models("max", 0, "cyto")
+        records = mu.build_cellpose_provenance(plan)
+        self.assertEqual([r["filename"] for r in records], ["cytotorch_0"])
+
+    @patch.dict(os.environ, _PIPELINE_ENV)
+    def test_records_land_in_code_parameters(self) -> None:
+        """Provenance recorded mid-run reaches the written document."""
+        os.environ[mu.CELLPOSE_MODELS_PATH_ENV] = str(self.models)
+        _write_model_files(
+            self.models, "cytotorch_0", "size_cytotorch_0.npy"
+        )
+        out = Path(tempfile.mkdtemp())
+        plan = mu.plan_cellpose_models("mean", 0, "cyto")
+        code = mu.build_extraction_code({"init": "mean"})
+        with stage_guard(
+            out, mu.PROCESS_TYPE, code, plane_id="VISp_0"
+        ) as ctx:
+            ctx.parameters[mu.CELLPOSE_MODELS_PARAMETER] = (
+                mu.build_cellpose_provenance(plan)
+            )
+        doc = Processing.model_validate_json(
+            (out / "processing.json").read_text()
+        )
+        parameters = doc.data_processes[0].code.parameters.model_dump()
+        recorded = parameters[mu.CELLPOSE_MODELS_PARAMETER]
+        self.assertEqual(len(recorded), 2)
+        self.assertEqual(recorded[0]["source"], mu.MODEL_SOURCE_ASSET)
+
+
+if __name__ == "__main__":
+    unittest.main()
