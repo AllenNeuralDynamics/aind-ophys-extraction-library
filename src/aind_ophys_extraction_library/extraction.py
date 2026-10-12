@@ -140,7 +140,7 @@ def bergamo_segmentation(
     )
 
 
-def create_chunk_vds(start: int, chunksize: int, input_fn: str, tmp_dir: str) -> str:
+def create_chunk_vds(start: int, chunksize: int, input_fn: str, tmp_dir: str) -> Path:
     """Create a Virtual Dataset for a specific chunk of the input data.
 
     Parameters
@@ -156,7 +156,7 @@ def create_chunk_vds(start: int, chunksize: int, input_fn: str, tmp_dir: str) ->
 
     Returns
     -------
-    str
+    Path
         Path to the created VDS chunk file.
     """
     with h5py.File(input_fn, "r") as fin:
@@ -167,7 +167,7 @@ def create_chunk_vds(start: int, chunksize: int, input_fn: str, tmp_dir: str) ->
         )
         vsource = h5py.VirtualSource(input_fn, "data", shape=data.shape)
         layout[:] = vsource[start:end]
-        vds_file = os.path.join(tmp_dir, f"chunk_{start}.h5")
+        vds_file = Path(tmp_dir) / f"chunk_{start}.h5"
         with h5py.File(vds_file, "w") as fout:
             fout.create_virtual_dataset("data", layout)
     return vds_file
@@ -179,7 +179,7 @@ def create_mmap_file(
     tmp_dir: str,
     chunksize: int = 500,
     n_chunks: int = 100,
-) -> str:
+) -> Path:
     """Create a CaImAn memory-mapped file from the input HDF5 data.
 
     Parameters
@@ -197,7 +197,7 @@ def create_mmap_file(
 
     Returns
     -------
-    str
+    Path
         Path to the created memory-mapped file.
     """
     with h5py.File(input_fn, "r") as fin:
@@ -223,7 +223,7 @@ def create_mmap_file(
                     )
                     logging.info(f"Created {len(chunkfiles)} chunk files.")
                     fname_new = caiman.save_memmap(
-                        chunkfiles,
+                        [str(f) for f in chunkfiles],
                         var_name_hdf5="data",
                         order="C",
                         dview=pool,
@@ -234,7 +234,7 @@ def create_mmap_file(
                 finally:
                     logging.info("Cleaning up temporary chunk files.")
                     pool.map(os.remove, chunkfiles)
-    return fname_new
+    return Path(fname_new)
 
 
 # ---------------------------------------------------------------------------
@@ -557,7 +557,7 @@ def run_caiman_extraction(
     logger.info(f"running CaImAn v{caiman.__version__}")
     cnmfe = args.neuropil == "cnmf-e"
     fname_new = create_mmap_file(input_fn, unique_id, str(args.tmp_dir))
-    Yr, dims, T = caiman.load_memmap(fname_new)
+    Yr, dims, T = caiman.load_memmap(str(fname_new))
     movie = np.reshape(Yr.T, [T] + list(dims), order="F")
     opts = build_CNMFParams(args, ops, cnmfe, Ain, dims)
     Ain_processed = None if cnmfe or Ain is None else (Ain > 0).toarray()
