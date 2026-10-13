@@ -58,7 +58,7 @@ dependencies = [
     # Base-image versions, matched so pip treats them as already satisfied and
     # does not reinstall over caiman's conda linkage.
     "numpy==1.26.4",
-    "scipy==1.14.1",
+    "scipy==1.15.3",
     "matplotlib==3.10.9",
     "imageio-ffmpeg==0.6.0",
     # Ranged, not pinned: the image reports opencv-python 4.7.0, but PyPI has
