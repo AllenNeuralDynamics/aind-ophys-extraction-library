@@ -5,8 +5,9 @@ QC builders (the ``QualityControl`` wrapper, ``default_grouping`` and writer
 live there). ``job.py`` collects the metrics and emits ONE
 ``quality_control.json`` per plane.
 
-The detected-ROIs payload is the core
-``aind_data_schema.core.quality_control.CurationMetric`` (a per-ROI list).
+The extracted-ROIs payload is the core
+``aind_data_schema.core.quality_control.CurationMetric`` (one reference
+entry per ROI).
 """
 
 from datetime import datetime as dt
@@ -27,9 +28,10 @@ from aind_pophys_metadata import quality_control as shared_qc
 
 _SEATTLE_TZ = pytz.timezone("America/Los_Angeles")
 
-EVALUATION = "Detected ROIs"
-METRIC_TYPE = "Operational QC"
+EVALUATION = "Extracted ROIs"
+METRIC_TYPE = "Informational"
 CURATION_TYPE = "Detected ROI validity"
+DESCRIPTION = "ROIs detected in this plane, each shown on the plane's summary images."
 
 
 def build_detected_rois_metric(
@@ -37,38 +39,36 @@ def build_detected_rois_metric(
     num_rois: int,
     reference: str,
 ) -> CurationMetric:
-    """Construct the detected-ROIs curation metric.
+    """Construct the extracted-ROIs curation metric.
 
     Seeded PASS by ``"Automated"`` (extraction ran and produced ROIs). The
-    ``value`` is one entry per detected ROI, indexed by ROI id in suite2p
-    order; a reviewer curates out the ids whose mask is invalid against the
-    referenced summary image.
+    ``value`` is a one-element list holding a mapping from each ROI id (the
+    ROI index as a string) to ``{"reference": reference}``, the QC portal
+    curation shape. A plane without ROIs gets ``[{}]``.
 
     Parameters
     ----------
     unique_id : str
         Plane/FOV identifier used in the metric name.
     num_rois : int
-        Number of ROIs detected; one ``value`` entry is created per ROI.
+        Number of ROIs detected; one mapping entry is created per ROI.
     reference : str
-        Path to the ROI summary image with IDs, relative to the asset root.
+        Path to the ROI summary image with IDs, relative to the asset root;
+        the metric and every ROI entry point to it.
 
     Returns
     -------
     CurationMetric
-        The detected-ROIs curation metric.
+        The extracted-ROIs curation metric.
     """
+    roi_references = {str(roi_id): {"reference": reference} for roi_id in range(num_rois)}
     return CurationMetric(
         name=f"{unique_id} Detected ROIs",
         modality=Modality.POPHYS,
         stage=Stage.PROCESSING,
         type=CURATION_TYPE,
-        value=[str(roi_id) for roi_id in range(num_rois)],
-        description=(
-            "Detected ROI ids, indexed in suite2p order. Review each ROI "
-            "against the summary image and curate out any whose mask is "
-            "invalid."
-        ),
+        value=[roi_references],
+        description=DESCRIPTION,
         reference=reference,
         tags={"evaluation": EVALUATION, "type": METRIC_TYPE},
         status_history=[

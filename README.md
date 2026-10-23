@@ -89,10 +89,11 @@ exercising it needs the full CO environment.
 
 ### `qc.py`
 
-`build_detected_rois_metric()` builds the reviewer-facing detected-ROIs
-curation metric (aind-data-schema's core `CurationMetric`, one entry per
-detected ROI); `build_quality_control()` and `write_quality_control_json()`
-delegate to `aind-pophys-metadata` so the document shape stays fleet-wide.
+`build_detected_rois_metric()` builds the informational extracted-ROIs
+curation metric (aind-data-schema's core `CurationMetric`, one figure
+reference per detected ROI); `build_quality_control()` and
+`write_quality_control_json()` delegate to `aind-pophys-metadata` so the
+document shape stays fleet-wide.
 
 ### `utils/metadata_utils.py`
 
