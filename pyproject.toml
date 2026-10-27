@@ -41,10 +41,10 @@ dependencies = [
     "aind-data-schema-models==6.2.0",
     "aind-ophys-utils==0.2.0",
     "log-schema[cloudwatch] @ git+https://github.com/AllenNeuralDynamics/aind-log-utils.git@f09685e#subdirectory=python",
-    "aind-pophys-metadata @ git+https://github.com/AllenNeuralDynamics/aind-pophys-metadata.git@v0.2.0",
+    "aind-pophys-metadata @ git+https://github.com/AllenNeuralDynamics/aind-pophys-metadata.git@v0.3.0",
     "pydantic==2.8.2",
     "pydantic-settings==2.14.2",
-    "pytz",
+    "pytz==2026.3.post1",
     # Segmentation stack. torch and sbxreader are pinned rather than left to
     # cellpose/suite2p resolution: an unpinned torch is the single largest
     # reproducibility risk in this image.
@@ -54,7 +54,7 @@ dependencies = [
     "sparse==0.15.4",
     "sbxreader==0.2.3",
     "torch==2.4.0",
-    "suite2p @ git+https://github.com/j-friedrich/suite2p.git@save_cellpose_output",
+    "suite2p @ git+https://github.com/j-friedrich/suite2p.git@ae0e9313b881f1d4bb51d7461f4796532a76e8aa",
     # Base-image versions, matched so pip treats them as already satisfied and
     # does not reinstall over caiman's conda linkage.
     "numpy==1.26.4",
@@ -66,6 +66,9 @@ dependencies = [
     # to install a different distribution over the conda build.
     "opencv-python>=4.7,<4.8",
 ]
+
+[project.urls]
+Repository = "https://github.com/AllenNeuralDynamics/aind-ophys-extraction-library"
 
 [dependency-groups]
 dev = [

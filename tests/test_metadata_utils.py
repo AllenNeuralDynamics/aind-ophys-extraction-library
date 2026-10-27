@@ -35,6 +35,8 @@ from aind_pophys_metadata.runner import stage_guard
 
 from aind_ophys_extraction_library.utils import metadata_utils as mu
 
+LIBRARY = "aind-ophys-extraction-library"
+
 _FIXTURES = Path(__file__).parent / "fixtures"
 
 _PIPELINE_ENV = {
@@ -352,19 +354,21 @@ class TestCodeIdentity(unittest.TestCase):
     """Code.version/url must identify one real, resolvable artifact."""
 
     @patch.dict(os.environ, {}, clear=True)
-    def test_version_comes_from_the_installed_library(self) -> None:
-        """Code.version is the backing library's own version, never empty."""
+    def test_identity_is_the_installed_library(self) -> None:
+        """name, version and url all describe this library's package."""
         code = mu.build_extraction_code({"a": 1})
-        self.assertEqual(code.version, version(mu.LIBRARY_NAME))
-        self.assertIn(mu.LIBRARY_NAME, code.url)
-        self.assertNotIn("/tree/", code.url)
+        self.assertEqual(code.name, LIBRARY)
+        self.assertEqual(code.version, version(LIBRARY))
+        self.assertEqual(
+            code.url, f"https://github.com/AllenNeuralDynamics/{LIBRARY}"
+        )
 
     @patch.dict(os.environ, {"VERSION": "1.4.0"}, clear=True)
     def test_wrapper_version_is_ignored(self) -> None:
         """The backing library is authoritative, not the runtime wrapper."""
         code = mu.build_extraction_code({"a": 1})
         self.assertNotEqual(code.version, "1.4.0")
-        self.assertEqual(code.version, version(mu.LIBRARY_NAME))
+        self.assertEqual(code.version, version(LIBRARY))
 
     def test_input_data_optional(self) -> None:
         """input_data=None yields a Code without input assets."""
