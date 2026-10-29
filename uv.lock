@@ -91,7 +91,7 @@ requires-dist = [
     { name = "aind-data-schema", specifier = "==2.9.0" },
     { name = "aind-data-schema-models", specifier = "==6.2.0" },
     { name = "aind-ophys-utils", specifier = "==0.2.0" },
-    { name = "aind-pophys-metadata", git = "https://github.com/AllenNeuralDynamics/aind-pophys-metadata.git?rev=v0.2.0" },
+    { name = "aind-pophys-metadata", git = "https://github.com/AllenNeuralDynamics/aind-pophys-metadata.git?rev=v0.3.0" },
     { name = "cellpose", specifier = "==3.0.10" },
     { name = "h5py", specifier = "==3.11.0" },
     { name = "imageio-ffmpeg", specifier = "==0.6.0" },
@@ -101,12 +101,12 @@ requires-dist = [
     { name = "opencv-python", specifier = ">=4.7,<4.8" },
     { name = "pydantic", specifier = "==2.8.2" },
     { name = "pydantic-settings", specifier = "==2.14.2" },
-    { name = "pytz" },
+    { name = "pytz", specifier = "==2026.3.post1" },
     { name = "sbxreader", specifier = "==0.2.3" },
     { name = "scikit-image", specifier = "==0.24.0" },
     { name = "scipy", specifier = "==1.14.1" },
     { name = "sparse", specifier = "==0.15.4" },
-    { name = "suite2p", git = "https://github.com/j-friedrich/suite2p.git?rev=save_cellpose_output" },
+    { name = "suite2p", git = "https://github.com/j-friedrich/suite2p.git?rev=ae0e9313b881f1d4bb51d7461f4796532a76e8aa" },
     { name = "torch", specifier = "==2.4.0" },
 ]
 
@@ -143,8 +143,8 @@ wheels = [
 
 [[package]]
 name = "aind-pophys-metadata"
-version = "0.2.0"
-source = { git = "https://github.com/AllenNeuralDynamics/aind-pophys-metadata.git?rev=v0.2.0#3f1ad1fd5c84e9b591d4cbdc5628fb4f1ace922c" }
+version = "0.3.0"
+source = { git = "https://github.com/AllenNeuralDynamics/aind-pophys-metadata.git?rev=v0.3.0#006733fac321b91f7435ca3ce92d40874417e390" }
 dependencies = [
     { name = "aind-data-schema" },
     { name = "aind-data-schema-models" },
@@ -1597,7 +1597,7 @@ wheels = [
 [[package]]
 name = "suite2p"
 version = "0.1.dev2328+gae0e9313b"
-source = { git = "https://github.com/j-friedrich/suite2p.git?rev=save_cellpose_output#ae0e9313b881f1d4bb51d7461f4796532a76e8aa" }
+source = { git = "https://github.com/j-friedrich/suite2p.git?rev=ae0e9313b881f1d4bb51d7461f4796532a76e8aa#ae0e9313b881f1d4bb51d7461f4796532a76e8aa" }
 dependencies = [
     { name = "cellpose" },
     { name = "importlib-metadata" },

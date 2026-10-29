@@ -28,18 +28,6 @@ from ..settings import ANATOMICAL_INIT_MODES, CAIMAN_INIT_MODES
 
 logger = logging.getLogger("Ophys extraction")
 
-#: Distribution name of this backing library. The shared builder derives
-#: ``Code.version`` from it.
-LIBRARY_NAME = "aind-ophys-extraction-library"
-
-#: Repository this code lives in, recorded as ``Code.url``. Only this repo
-#: knows where its own code lives, so the shared builder is told.
-REPOSITORY_URL = (
-    "https://github.com/AllenNeuralDynamics/aind-ophys-extraction-library"
-)
-
-CODE_NAME = "aind-ophys-extraction"
-
 PROCESS_TYPE = ProcessName.VIDEO_ROI_TIMESERIES_EXTRACTION
 
 #: Substring identifying a Bergamo rig in ``instrument_id``.
@@ -391,13 +379,11 @@ def build_extraction_code(
     Returns
     -------
     Code
-        The populated code block. The version comes from the installed
-        backing library, whose repository :data:`REPOSITORY_URL` names.
+        The populated code block; name, version and url are this library's
+        installed package metadata.
     """
     return shared_processing.build_code(
-        CODE_NAME,
-        library_name=LIBRARY_NAME,
-        url=REPOSITORY_URL,
+        __name__,
         parameters=parameters,
         input_data=input_data,
     )
