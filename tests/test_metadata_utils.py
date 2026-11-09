@@ -3,7 +3,7 @@
 Schema-version handling, the field getters, path helpers and ``Processing``
 builders live in the shared ``aind_pophys_metadata`` library (tested there);
 these tests cover the extraction surface: ``load_extraction_metadata``, the
-Bergamo epoch-stem filter, the ``Code`` identity, and the
+TIFF-stack epoch-stem filter, the ``Code`` identity, and the
 ``output_parameters`` summary.
 
 The two v2 fixtures under ``tests/fixtures`` are real ``acquisition.json``
@@ -100,7 +100,7 @@ class TestLoadMetadata(unittest.TestCase):
         _write(d, "subject.json", {"subject_id": "781"})
         md = mu.load_extraction_metadata(d)
         self.assertEqual(md.frame_rate, 9.6)
-        self.assertEqual(md.instrument_id, "MESO.1")
+        self.assertEqual(md.raw_format, "mesoscope_aind")
         self.assertEqual(md.subject_id, "781")
         self.assertEqual(md.dataset_name, "mouse_1_2024")
         self.assertEqual(md.valid_epoch_stems, ())
@@ -118,7 +118,7 @@ class TestLoadMetadata(unittest.TestCase):
         )
         md = mu.load_extraction_metadata(d)
         self.assertEqual(md.frame_rate, 11.0)
-        self.assertEqual(md.instrument_id, "MESO.1")
+        self.assertEqual(md.raw_format, "mesoscope_aind")
         self.assertIsNone(md.subject_id)
 
     def test_subject_id_canonical_from_core(self) -> None:
@@ -179,8 +179,7 @@ class TestLoadMetadata(unittest.TestCase):
         d = Path(tempfile.mkdtemp())
         _copy_fixture(d, "acquisition_multiplane_v2")
         md = mu.load_extraction_metadata(d, frame_rate_override=9.48)
-        self.assertEqual(md.instrument_id, "MESO.2")
-        self.assertFalse(mu.is_bergamo(md.instrument_id))
+        self.assertEqual(md.raw_format, "mesoscope_aind")
         self.assertEqual(md.valid_epoch_stems, ())
 
     def test_real_v2_bergamo_acquisition_yields_stems(self) -> None:
@@ -188,24 +187,22 @@ class TestLoadMetadata(unittest.TestCase):
         d = Path(tempfile.mkdtemp())
         _copy_fixture(d, "acquisition_bergamo_v2")
         md = mu.load_extraction_metadata(d, frame_rate_override=10.7)
-        self.assertTrue(mu.is_bergamo(md.instrument_id))
+        self.assertEqual(md.raw_format, "tiff_stack")
         self.assertEqual(md.valid_epoch_stems, _BERGAMO_STEMS)
 
 
-class TestIsBergamo(unittest.TestCase):
-    """Instrument routing by substring, never by dataset name."""
+class TestIsTiffStack(unittest.TestCase):
+    """The filtered-segmentation path keys on the raw format."""
 
-    def test_bergamo_detected(self) -> None:
-        """A Bergamo rig id matches."""
-        self.assertTrue(mu.is_bergamo("442_Bergamo_2p_photostim"))
-
-    def test_other_instrument_not_bergamo(self) -> None:
-        """A mesoscope rig id does not."""
-        self.assertFalse(mu.is_bergamo("MESO.2"))
-
-    def test_missing_instrument_not_bergamo(self) -> None:
-        """An absent instrument id does not."""
-        self.assertFalse(mu.is_bergamo(None))
+    def test_raw_formats(self) -> None:
+        """Only a TIFF stack takes the path."""
+        for raw_format, expected in (
+            ("tiff_stack", True),
+            ("mesoscope_aind", False),
+            (None, False),
+        ):
+            with self.subTest(raw_format=raw_format):
+                self.assertEqual(mu.is_tiff_stack(raw_format), expected)
 
 
 class TestValidEpochStems(unittest.TestCase):
@@ -280,7 +277,7 @@ class TestValidEpochStems(unittest.TestCase):
                         "output_parameters": {"tiff_stem": "spont"},
                     },
                     {
-                        "stimulus_name": mu.PHOTOSTIM_STIMULUS_NAME,
+                        "stimulus_name": "2p photostimulation",
                         "stimulus_modalities": ["Optogenetics"],
                     },
                     {
@@ -348,6 +345,37 @@ class TestValidEpochStems(unittest.TestCase):
             mu.valid_epoch_stems(core)
         self.assertIn("acquisition.json", str(ctx.exception))
         self.assertIn("spontaneous", str(ctx.exception))
+
+    def test_minimal_photostim_flag_excludes_the_epoch(self) -> None:
+        """An external document marks photostim without AIND names."""
+        core = self._core(
+            "metadata.json",
+            {
+                "raw_format": "tiff_stack",
+                "epochs": [
+                    {"stimulus_name": "rest", "tiff_stem": "a"},
+                    {
+                        "stimulus_name": "stim",
+                        "tiff_stem": "b",
+                        "photostim": True,
+                    },
+                    {"stimulus_name": "rest", "tiff_stem": "c"},
+                ],
+            },
+        )
+        self.assertEqual(mu.valid_epoch_stems(core), ("a", "c"))
+
+    def test_minimal_without_photostim_keeps_every_epoch(self) -> None:
+        """The default is no photostimulation."""
+        core = self._core(
+            "metadata.json",
+            {
+                "epochs": [
+                    {"stimulus_name": "2p photostimulation", "tiff_stem": "a"}
+                ]
+            },
+        )
+        self.assertEqual(mu.valid_epoch_stems(core), ("a",))
 
 
 class TestCodeIdentity(unittest.TestCase):
