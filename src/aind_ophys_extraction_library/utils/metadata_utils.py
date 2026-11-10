@@ -100,8 +100,8 @@ def valid_epoch_stems(core: CoreMetadata) -> Tuple[str, ...]:
 
     Photostimulation epochs are excluded: their frames are not part of the
     movie segmentation runs on. The filter reads each epoch's ``photostim``
-    role, which ``aind_pophys_metadata`` derives from the stimulus name for
-    v1 and v2 documents.
+    annotation, which ``aind_pophys_metadata`` derives from the stimulus name
+    for v1 and v2 documents.
 
     Order is exactly the order the acquisition metadata records, which is not
     chronological in real assets. It must not be sorted: each stem is paired
