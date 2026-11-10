@@ -3,7 +3,7 @@
 Schema-version handling, the field getters, path helpers and ``Processing``
 builders live in the shared ``aind_pophys_metadata`` library (tested there);
 these tests cover the extraction surface: ``load_extraction_metadata``, the
-TIFF-stack epoch-stem filter, the ``Code`` identity, and the
+Bergamo epoch-stem filter, the ``Code`` identity, and the
 ``output_parameters`` summary.
 
 The two v2 fixtures under ``tests/fixtures`` are real ``acquisition.json``

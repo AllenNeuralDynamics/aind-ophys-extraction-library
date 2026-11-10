@@ -112,7 +112,7 @@ def create_virtual_dataset(
 def bergamo_segmentation(
     motion_corr_fp: Path, valid_epoch_stems: Sequence[str], temp_dir: Path
 ) -> Path:
-    """Create a virtual dataset of a TIFF stack, excluding photostim frames.
+    """Create a virtual dataset for Bergamo data, excluding photostimulation frames.
 
     Parameters
     ----------
@@ -883,9 +883,9 @@ def run_suite2p_extraction(
     Parameters
     ----------
     motion_corrected_fn : Path
-        Motion-corrected (or photostim-filtered) HDF5 input.
+        Motion-corrected (or Bergamo-filtered) HDF5 input.
     input_fn : Path
-        Original registered HDF5 (used for TIFF-stack full-movie extraction).
+        Original registered HDF5 (used for Bergamo full-movie extraction).
     args : ExtractionSettings
         Extraction settings.
     frame_rate : float

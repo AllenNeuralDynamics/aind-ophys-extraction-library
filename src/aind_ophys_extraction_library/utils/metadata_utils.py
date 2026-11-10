@@ -18,9 +18,9 @@ from aind_data_schema.components.identifiers import Code
 from aind_data_schema_models.process_names import ProcessName
 from aind_pophys_metadata import processing as shared_processing
 from aind_pophys_metadata import (
-    RAW_FORMAT_TIFF_STACK,
     MODEL_SOURCE_ASSET,
     MODEL_SOURCE_NETWORK,
+    RAW_FORMAT_TIFF_STACK,
     CoreMetadata,
     model_provenance,
 )

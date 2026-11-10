@@ -101,8 +101,8 @@ The metadata layer over `aind-pophys-metadata`.
 `load_extraction_metadata()` dispatches on which core file is present
 (`acquisition.json` for schema v2, `session.json` for v1) and returns the
 `ExtractionMetadata` view this step consumes. `get_valid_epoch_stems()` resolves
-the Bergamo TIFF stems from either schema version, and `is_bergamo()` routes on
-`instrument_id`. `build_extraction_code()` builds the `Code` block,
+the Bergamo TIFF stems from either schema version, and `is_tiff_stack()` routes on
+`raw_format`. `build_extraction_code()` builds the `Code` block,
 `build_output_parameters()` the scalar output summary, and
 `plan_cellpose_models()` / `build_cellpose_provenance()` record which Cellpose
 model files a run loaded and whether they were already local. The model
