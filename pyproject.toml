@@ -42,7 +42,7 @@ dependencies = [
     "aind-ophys-utils==0.2.0",
     "log-schema[cloudwatch] @ git+https://github.com/AllenNeuralDynamics/aind-log-utils.git@f09685e#subdirectory=python",
     "aind-pophys-metadata @ git+https://github.com/AllenNeuralDynamics/aind-pophys-metadata.git@v0.4.0",
-    "pydantic==2.8.2",
+    "pydantic==2.14.3",
     "pydantic-settings==2.14.2",
     "pytz==2026.3.post1",
     # Segmentation stack. torch and sbxreader are pinned rather than left to
