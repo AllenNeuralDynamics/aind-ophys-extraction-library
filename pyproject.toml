@@ -48,7 +48,7 @@ dependencies = [
     # Segmentation stack. torch and sbxreader are pinned rather than left to
     # cellpose/suite2p resolution: an unpinned torch is the single largest
     # reproducibility risk in this image.
-    "cellpose==3.0.10",
+    "cellpose==4.2.1.1",
     "h5py==3.11.0",
     "scikit-image==0.24.0",
     "sparse==0.15.4",
