@@ -5,7 +5,7 @@
 [![semantic-release: angular](https://img.shields.io/badge/semantic--release-angular-e10079?logo=semantic-release)](https://github.com/semantic-release/semantic-release)
 ![Interrogate](https://img.shields.io/badge/interrogate-100.0%25-brightgreen)
 ![Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen)
-![Python](https://img.shields.io/badge/python-3.10-blue?logo=python)
+![Python](https://img.shields.io/badge/python->=3.10,<3.11-blue?logo=python)
 
 ROI detection and trace extraction for AIND planar/population ophys movies. This
 is the backing library for the `aind-ophys-extraction` capsule: all logic lives
@@ -101,8 +101,8 @@ The metadata layer over `aind-pophys-metadata`.
 `load_extraction_metadata()` dispatches on which core file is present
 (`acquisition.json` for schema v2, `session.json` for v1) and returns the
 `ExtractionMetadata` view this step consumes. `get_valid_epoch_stems()` resolves
-the Bergamo TIFF stems from either schema version, and `is_bergamo()` routes on
-`instrument_id`. `build_extraction_code()` builds the `Code` block,
+the Bergamo TIFF stems from either schema version, and `is_tiff_stack()` routes on
+`raw_format`. `build_extraction_code()` builds the `Code` block,
 `build_output_parameters()` the scalar output summary, and
 `plan_cellpose_models()` / `build_cellpose_provenance()` record which Cellpose
 model files a run loaded and whether they were already local. The model

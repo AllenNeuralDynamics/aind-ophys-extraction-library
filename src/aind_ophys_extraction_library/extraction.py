@@ -35,6 +35,7 @@ from cellpose.models import Cellpose
 from scipy.sparse import coo_matrix, hstack, linalg
 
 from .settings import ANATOMICAL_INIT_MODES, ExtractionSettings
+from .utils import metadata_utils as mu
 
 logger = logging.getLogger(
     "Source extraction using a combination of Cellpose, Suite2p, and CaImAn"
@@ -872,7 +873,7 @@ def run_suite2p_extraction(
     input_fn: Path,
     args: ExtractionSettings,
     frame_rate: float,
-    instrument_id: Optional[str],
+    raw_format: Optional[str],
 ) -> dict:
     """Run Suite2p ROI detection and return raw outputs.
 
@@ -889,8 +890,9 @@ def run_suite2p_extraction(
         Extraction settings.
     frame_rate : float
         Resolved frame rate.
-    instrument_id : str, optional
-        Instrument identifier; ``"Bergamo"`` substring triggers special handling.
+    raw_format : str, optional
+        Raw movie layout. A TIFF stack is segmented on its filtered movie, so
+        its traces are extracted from the full registered movie.
 
     Returns
     -------
@@ -1064,7 +1066,7 @@ def run_suite2p_extraction(
     suite2p_stats = np.load(str(suite2p_stat_path), allow_pickle=True)
 
     if args.neuropil in ("mutualinfo", "suite2p"):
-        if instrument_id and "Bergamo" in instrument_id:
+        if mu.is_tiff_stack(raw_format):
             (
                 stat,
                 traces_roi,

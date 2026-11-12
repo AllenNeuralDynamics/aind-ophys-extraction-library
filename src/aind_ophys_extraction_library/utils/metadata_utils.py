@@ -20,6 +20,7 @@ from aind_pophys_metadata import processing as shared_processing
 from aind_pophys_metadata import (
     MODEL_SOURCE_ASSET,
     MODEL_SOURCE_NETWORK,
+    RAW_FORMAT_TIFF_STACK,
     CoreMetadata,
     model_provenance,
 )
@@ -29,13 +30,6 @@ from ..settings import ANATOMICAL_INIT_MODES, CAIMAN_INIT_MODES
 logger = logging.getLogger("Ophys extraction")
 
 PROCESS_TYPE = ProcessName.VIDEO_ROI_TIMESERIES_EXTRACTION
-
-#: Substring identifying a Bergamo rig in ``instrument_id``.
-BERGAMO_INSTRUMENT = "Bergamo"
-
-#: Stimulus epochs with this name are photostimulation and are excluded from
-#: the movie Bergamo extraction runs on.
-PHOTOSTIM_STIMULUS_NAME = "2p photostimulation"
 
 #: Environment variable cellpose itself reads to locate its model files
 #: (``cellpose.models.MODEL_DIR``). A cellpose convention, not a Code Ocean
@@ -63,20 +57,23 @@ AUTO_DIAMETER_MODEL = "cyto3"
 _TORCH_NAMED_MODELS = ("cyto", "cyto2", "nuclei")
 
 
-def is_bergamo(instrument_id: Optional[str]) -> bool:
-    """Return whether ``instrument_id`` names a Bergamo rig.
+def is_tiff_stack(raw_format: Optional[str]) -> bool:
+    """Return whether the movie is a stitched single-plane TIFF stack.
+
+    A TIFF-stack movie carries ``epoch_locations.json``, so segmentation can
+    leave out its photostimulation epochs.
 
     Parameters
     ----------
-    instrument_id : str or None
-        Instrument/rig identifier from the core acquisition file.
+    raw_format : str or None
+        Raw movie layout from the core acquisition file.
 
     Returns
     -------
     bool
-        ``True`` when the identifier contains the Bergamo marker.
+        ``True`` for ``tiff_stack``.
     """
-    return bool(instrument_id) and BERGAMO_INSTRUMENT in instrument_id
+    return raw_format == RAW_FORMAT_TIFF_STACK
 
 
 @dataclass(frozen=True)
@@ -85,26 +82,26 @@ class ExtractionMetadata:
 
     ``frame_rate`` drives Suite2p temporal binning and is validated at load
     time, so a rate-less asset fails with a message naming the file rather
-    than partway through ``run()``. ``instrument_id`` is used to detect
-    Bergamo rigs; ``valid_epoch_stems`` carries the Bergamo TIFF stems that
-    survive photostimulation filtering. The remaining fields are identifiers
+    than partway through ``run()``. ``raw_format`` selects the TIFF-stack
+    path; ``valid_epoch_stems`` carries its TIFF stems that survive
+    photostimulation filtering. The remaining fields are identifiers
     used for logging and output naming.
     """
 
     frame_rate: float
-    instrument_id: Optional[str] = None
+    raw_format: Optional[str] = None
     subject_id: Optional[str] = None
     dataset_name: Optional[str] = None
     valid_epoch_stems: Tuple[str, ...] = ()
 
 
 def valid_epoch_stems(core: CoreMetadata) -> Tuple[str, ...]:
-    """TIFF stems of the stimulus epochs Bergamo extraction keeps.
+    """TIFF stems of the stimulus epochs TIFF-stack extraction keeps.
 
     Photostimulation epochs are excluded: their frames are not part of the
-    movie extraction runs on. The filter matches on the stimulus name, which
-    is what production has always keyed on; the epoch's ``stimulus_modalities``
-    is the same epoch's second signal but is deliberately not the criterion here.
+    movie segmentation runs on. The filter reads each epoch's ``photostim``
+    annotation, which ``aind_pophys_metadata`` derives from the stimulus name
+    for v1 and v2 documents.
 
     Order is exactly the order the acquisition metadata records, which is not
     chronological in real assets. It must not be sorted: each stem is paired
@@ -128,7 +125,7 @@ def valid_epoch_stems(core: CoreMetadata) -> Tuple[str, ...]:
     """
     stems: List[str] = []
     for epoch in core.get_epoch_records():
-        if epoch["stimulus_name"] == PHOTOSTIM_STIMULUS_NAME:
+        if epoch["photostim"]:
             continue
         if not epoch["tiff_stem"]:
             raise ValueError(
@@ -171,17 +168,17 @@ def load_extraction_metadata(
         frame rate.
     """
     core = CoreMetadata.load(Path(input_dir))
-    instrument_id = core.get_instrument_id()
+    raw_format = core.get_raw_format()
     return ExtractionMetadata(
         frame_rate=core.get_frame_rate(
             cli_override=frame_rate_override,
             required=True,
         ),
-        instrument_id=instrument_id,
+        raw_format=raw_format,
         subject_id=core.get_subject_id(),
         dataset_name=core.get_dataset_name(),
         valid_epoch_stems=(
-            valid_epoch_stems(core) if is_bergamo(instrument_id) else ()
+            valid_epoch_stems(core) if is_tiff_stack(raw_format) else ()
         ),
     )
 

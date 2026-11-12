@@ -70,7 +70,7 @@ def _run_detection(
             input_fn=input_fn,
             args=settings,
             frame_rate=metadata.frame_rate,
-            instrument_id=metadata.instrument_id,
+            raw_format=metadata.raw_format,
         )
 
     with h5py.File(str(motion_corrected_fn), "r") as open_vid:
@@ -213,7 +213,7 @@ def _run_extraction(
     results_root = settings.output_dir.resolve()
     tmp_dir = settings.tmp_dir.resolve()
 
-    if mu.is_bergamo(metadata.instrument_id):
+    if mu.is_tiff_stack(metadata.raw_format):
         motion_corrected_fn = bergamo_segmentation(
             input_fn, metadata.valid_epoch_stems, temp_dir=tmp_dir
         )

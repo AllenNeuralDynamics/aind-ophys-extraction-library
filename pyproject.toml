@@ -18,7 +18,7 @@ classifiers = [
     "Programming Language :: Python :: 3"
 ]
 readme = "README.md"
-version = "0.0.0"
+version = "0.1.0"
 
 # This library owns every dependency it imports that can be resolved from
 # PyPI, so the capsule environment is the single library pin.
@@ -41,7 +41,7 @@ dependencies = [
     "aind-data-schema-models==6.2.0",
     "aind-ophys-utils==0.2.0",
     "log-schema[cloudwatch] @ git+https://github.com/AllenNeuralDynamics/aind-log-utils.git@f09685e#subdirectory=python",
-    "aind-pophys-metadata @ git+https://github.com/AllenNeuralDynamics/aind-pophys-metadata.git@v0.3.1",
+    "aind-pophys-metadata @ git+https://github.com/AllenNeuralDynamics/aind-pophys-metadata.git@v0.4.0",
     "pydantic==2.8.2",
     "pydantic-settings==2.14.2",
     "pytz==2026.3.post1",
