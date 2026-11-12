@@ -9,10 +9,10 @@
   "acquisition_start_tz": -7,
   "acquisition_end_time": "2025-09-03T10:36:07.794107-07:00",
   "experimenters": [
-    "Experimenter A"
+    "shiella caldejon"
   ],
   "ethics_review_id": [
-    "0000"
+    "2115"
   ],
   "instrument_id": "MESO.2",
   "acquisition_type": "TRAINING_1_gratings",

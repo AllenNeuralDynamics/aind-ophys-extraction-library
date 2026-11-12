@@ -6,12 +6,15 @@ these tests cover the extraction surface: ``load_extraction_metadata``, the
 Bergamo epoch-stem filter, the ``Code`` identity, and the
 ``output_parameters`` summary.
 
-The two v2 fixtures under ``tests/fixtures`` are anonymised
-``acquisition.json`` documents in the form ``aind-metadata-upgrader`` emits
-from a v1 ``session.json``: a multiplane MESO session (no stimulus epochs)
-and a single-plane Bergamo photostimulation session (five stimulus epochs).
-They follow the upgrader's output, so the v2 branches are exercised against
-the published migration rules rather than a guess at them.
+The two v2 fixtures under ``tests/fixtures`` are real ``acquisition.json``
+documents produced by running ``aind-metadata-upgrader`` over the v1
+``session.json`` of two raw assets: the multiplane MESO session
+``multiplane-ophys_804670_2025-09-03_09-35-27`` (Code Ocean data asset
+f1b18712-b541-4715-ba98-b155af7c58c3, no stimulus epochs) and the Bergamo
+photostimulation session ``single-plane-ophys_748832_2024-12-04_16-20-54``
+(Code Ocean data asset 9df5a802-85df-4aab-a225-7ea0f8a8e3b8, five). They are
+generated, never hand-written, so the v2 branches are exercised against the
+published migration rules rather than a guess at them.
 """
 
 import json
